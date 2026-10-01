@@ -165,6 +165,8 @@ this.resourceOwnershipService.assertOwnerOrAdmin(
 * `src/common/guards/roles.guard.spec.ts`: Tests missing roles, missing authentication, matching roles, insufficient roles, and multi-role OR evaluation.
 * `src/modules/hotels/authorization/hotel-authorization.service.spec.ts`: Tests hotel existence verification, assigned manager access, unassigned manager rejection, and admin override.
 * `src/modules/hotels/hotels.service.spec.ts`: Tests admin creation, public discovery filtering, manager assigned property retrieval, unassigned manager rejection, and soft-deactivation.
+* `src/modules/room-types/room-types.service.spec.ts`: Tests RoomType creation, occupancy constraints, unique slug check, manager scoping, and soft-delete protections.
+* `src/modules/rooms/rooms.service.spec.ts`: Tests Room creation derived from RoomType, duplicate room number checks, cross-hotel mismatch prevention, and operational status transitions.
 * `src/common/authorization/resource-ownership.service.spec.ts`: Tests customer ownership match, non-owner rejection, and admin bypass.
 
 ### E2E Security & IDOR Tests
@@ -178,12 +180,18 @@ this.resourceOwnershipService.assertOwnerOrAdmin(
   - **Property Lifecycle & CRUD:** Admin property creation, manager retrieval, manager update, and soft-deletion.
   - **Public Discovery & Filtering:** Unauthenticated listing with pagination (`page`, `limit`), case-insensitive city search, star rating filter, and hiding inactive/soft-deleted properties.
   - **Manager Assignment Enforcement:** Admin assigning/unassigning managers; verifying unassigned managers receive 403 on property updates and deletion.
+* `test/inventory.e2e-spec.ts`:
+  - **RoomType Access Invariant:** Manager A $\rightarrow$ RoomType in Hotel A (201/200); Manager A $\rightarrow$ RoomType in Hotel C (403 Forbidden).
+  - **Room Creation Hotel Derivation:** Parent hotel is derived from RoomType; cross-hotel mismatched `hotelId` rejected with 400 Bad Request.
+  - **IDOR on Operational Inventory:** Manager A cannot access or update physical room status for rooms belonging to Hotel C (403 Forbidden).
+  - **Room Number Scoping:** Room 901 allowed in Hotel A AND Hotel C concurrently; duplicate Room 901 in Hotel A blocked with 409 Conflict.
+  - **Referential Deletion Protection:** Deleting RoomType containing active rooms blocked with 409 Conflict.
 
 ---
 
-## 9. Future Authorization Roadmap (Phases 5 – 10)
+## 9. Future Authorization Roadmap (Phases 7 – 10)
 
 The following resource-level authorization services will be implemented alongside their respective business domains:
-* **Phase 6 (Room Inventory):** Verify room and room-type modifications belong to a hotel assigned to the manager.
+* **Phase 6 (Room Inventory):** *Implemented & Verified.* Room and RoomType modifications are verified against manager assignments in `hotel_managers`.
 * **Phase 8 (Bookings):** Customer booking ownership assertions (`assertBookingOwner`) and manager property booking checks (`assertBookingBelongsToManagerHotel`).
 * **Phase 9 (Payments & Refunds):** Restricting refund issuance to authorized property managers or platform admins.

@@ -190,3 +190,40 @@ Default `limit` is 20; maximum permitted limit is 100. Memory-level array slicin
 ### 7.2 Safe Filters & Sorting
 - **Filters:** `city`, `state`, `country`, `search` (name substring matching using PostgreSQL `mode: 'insensitive'`), `starRating`, and `minRating` (`gte: minRating`).
 - **Sorting Whitelist:** `name`, `starRating`, `createdAt`, `city` with order `asc` or `desc`. Dynamic or unvalidated column injection is prevented via enum validation in `QueryHotelsDto`.
+
+---
+
+## 8. Room Categories (`room_types`) & Physical Inventory (`rooms`) (Phase 6)
+
+### 8.1 The Domain Distinction: Product vs Unit
+* **`RoomType` (Category / Product):** The sellable inventory archetype (e.g., Deluxe King, Presidential Suite). Customers search, compare, and reserve room categories. Attributes include capacity, pricing in integer cents (`base_price_cents`), bed configuration, and amenities.
+* **`Room` (Physical Unit):** The actual brick-and-mortar hotel room (e.g., Room 101, Room 102A). Rooms belong to exactly one `RoomType` and one `Hotel`. Physical room identifiers are operational entities for front-desk and housekeeping, not public booking catalog entries.
+
+```text
+Hotel A (Mumbai)
+├── Deluxe Room (RoomType) ────────── basePriceCents: 500000 (₹5,000.00)
+│    ├── Room 101 (AVAILABLE)
+│    ├── Room 102 (MAINTENANCE)
+│    └── Room 103 (AVAILABLE)
+└── Presidential Suite (RoomType) ── basePriceCents: 1500000 (₹15,000.00)
+     ├── Room 201 (AVAILABLE)
+     └── Room 202 (AVAILABLE)
+```
+
+### 8.2 Database Constraints & Integrity
+1. **Uniqueness Invariants:**
+   - `RoomType`: Unique by hotel and slug: `@@unique([hotelId, slug])`. Different hotels may feature categories with the same name.
+   - `Room`: Unique by hotel and room number: `@@unique([hotelId, roomNumber])`. Different hotels may have a Room 101, but a single property cannot duplicate room numbers.
+2. **Occupancy & Pricing Checks:**
+   - `chk_room_types_occupancy`: `max_occupancy >= 1 AND max_adults >= 1 AND max_children >= 0`
+   - `chk_room_types_pricing`: `base_price_cents >= 0` (Exact `BigInt` monetary representation in cents/paise; zero floating-point rounding errors).
+3. **Operational Status vs Booking Availability:**
+   - `operational_status`: `AVAILABLE`, `OCCUPIED`, `MAINTENANCE`, `OUT_OF_SERVICE`.
+   - **Operational status** designates physical asset readiness (maintenance repairs, deep cleaning, decommissioned).
+   - **Booking availability** is date-range-specific temporal availability calculated dynamically in later booking/inventory phases.
+
+### 8.3 Referential Integrity & Deletion Protections
+- `RoomType` cannot reference a non-existent `Hotel` (`onDelete: Restrict`).
+- `Room` cannot reference a non-existent `RoomType` (`onDelete: Restrict`).
+- Deleting a `RoomType` that still contains active physical rooms is blocked (`409 Conflict` - `ROOM_TYPE_HAS_ROOMS`).
+- Soft-deletion sets `deletedAt = now()` and sets rooms to `OUT_OF_SERVICE`, preserving historical booking snapshots and audit logs.

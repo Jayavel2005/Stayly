@@ -162,3 +162,119 @@ All admin endpoints require `Authorization: Bearer <JWT>` where the token posses
 ### 4.4 Unassign Manager from Hotel
 * **Endpoint:** `DELETE /api/v1/admin/hotels/:hotelId/managers/:managerId`
 * **Success Response (`200 OK`):** `{ "success": true, "data": { "message": "Manager assignment successfully revoked." } }`
+
+---
+
+## 5. Room Categories & Types Endpoints (`/api/v1/room-types`)
+
+### 5.1 Create Room Category
+* **Endpoint:** `POST /api/v1/room-types`
+* **Access:** Authenticated (`ADMIN` or assigned `HOTEL_MANAGER`)
+* **Payload:**
+  ```json
+  {
+    "hotelId": "44444444-4444-4444-8444-444444444444",
+    "name": "Deluxe Sea View Suite",
+    "slug": "deluxe-sea-view-suite",
+    "description": "Luxurious suite featuring king bed, panoramic ocean views, and private balcony.",
+    "maxOccupancy": 3,
+    "maxAdults": 2,
+    "maxChildren": 1,
+    "basePriceCents": 850000,
+    "currency": "INR",
+    "bedType": "KING",
+    "sizeSqMeters": 48.5,
+    "isActive": true
+  }
+  ```
+* **Success Response (`201 CREATED`):** Created RoomType record.
+* **Error Response (`403 FORBIDDEN`):** If manager is not assigned to `hotelId`.
+* **Error Response (`409 CONFLICT`):** Duplicate slug in the same hotel property.
+
+### 5.2 List & Filter Room Categories
+* **Endpoint:** `GET /api/v1/room-types`
+* **Access:** Public (Role-aware filtering)
+* **Query Parameters:**
+  | Parameter | Type | Default | Description |
+  | :--- | :--- | :--- | :--- |
+  | `page` | integer | `1` | Page number |
+  | `limit` | integer | `20` | Items per page (max: 100) |
+  | `hotelId` | UUID | - | Filter by parent hotel property |
+  | `search` | string | - | Search by category name or description |
+  | `isActive` | boolean | - | Operational status filter |
+  | `sortBy` | string | `createdAt` | Sort field: `name`, `basePriceCents`, `maxOccupancy`, `createdAt` |
+  | `sortOrder` | string | `desc` | Direction: `asc`, `desc` |
+* **Behavior:** Public visitors receive only active categories for active hotels; managers receive categories belonging to their assigned properties; admins receive global listings.
+
+### 5.3 Get Room Category by ID
+* **Endpoint:** `GET /api/v1/room-types/:id`
+* **Access:** Public (Returns 404 if category or parent hotel is inactive/deleted)
+
+### 5.4 Update Room Category
+* **Endpoint:** `PATCH /api/v1/room-types/:id`
+* **Access:** Authenticated (`ADMIN` or assigned `HOTEL_MANAGER`)
+* **Behavior:** Partial updates for pricing, capacity, and bedding. Moving categories between hotels is prohibited.
+
+### 5.5 Delete Room Category
+* **Endpoint:** `DELETE /api/v1/room-types/:id`
+* **Access:** Authenticated (`ADMIN` or assigned `HOTEL_MANAGER`)
+* **Invariant:** If active physical inventory rooms exist under this category, deletion is blocked with `409 CONFLICT` (`ROOM_TYPE_HAS_ROOMS`).
+
+---
+
+## 6. Physical Room Inventory Endpoints (`/api/v1/rooms`)
+
+Physical room inventory endpoints are restricted to property management (`HOTEL_MANAGER`) and administrative governance (`ADMIN`). Customers cannot directly list or query individual operational room units.
+
+### 6.1 Create Physical Room
+* **Endpoint:** `POST /api/v1/rooms`
+* **Access:** Authenticated (`ADMIN` or assigned `HOTEL_MANAGER`)
+* **Payload:**
+  ```json
+  {
+    "roomTypeId": "33333333-3333-4333-8333-333333333333",
+    "roomNumber": "101",
+    "floor": 1,
+    "operationalStatus": "AVAILABLE"
+  }
+  ```
+* **Hotel Derivation:** The parent hotel is strictly derived from `roomTypeId`.
+* **Database Invariant:** Room numbers are unique per hotel property (`UNIQUE(hotel_id, room_number)`). Duplicate numbers within the same hotel are rejected (`409 CONFLICT`). Different hotels may reuse the same room number.
+
+### 6.2 List & Filter Physical Rooms
+* **Endpoint:** `GET /api/v1/rooms`
+* **Access:** Authenticated (`ADMIN` or assigned `HOTEL_MANAGER`)
+* **Query Parameters:**
+  | Parameter | Type | Default | Description |
+  | :--- | :--- | :--- | :--- |
+  | `page` | integer | `1` | Page number |
+  | `limit` | integer | `20` | Items per page (max: 100) |
+  | `hotelId` | UUID | - | Filter by hotel property |
+  | `roomTypeId` | UUID | - | Filter by room category |
+  | `operationalStatus` | string | - | Enum: `AVAILABLE`, `OCCUPIED`, `MAINTENANCE`, `OUT_OF_SERVICE` |
+  | `floor` | integer | - | Floor filter |
+  | `search` | string | - | Search room number |
+
+### 6.3 Get Physical Room by ID
+* **Endpoint:** `GET /api/v1/rooms/:id`
+* **Access:** Authenticated (`ADMIN` or assigned `HOTEL_MANAGER`)
+
+### 6.4 Update Physical Room
+* **Endpoint:** `PATCH /api/v1/rooms/:id`
+* **Access:** Authenticated (`ADMIN` or assigned `HOTEL_MANAGER`)
+* **Reassignment Invariant:** A room may be reassigned to another `roomTypeId` only if the target category belongs to the **SAME** hotel property (`400 BAD_REQUEST` on cross-hotel mismatch).
+
+### 6.5 Update Operational Status
+* **Endpoint:** `PATCH /api/v1/rooms/:id/status`
+* **Access:** Authenticated (`ADMIN` or assigned `HOTEL_MANAGER`)
+* **Payload:**
+  ```json
+  {
+    "status": "MAINTENANCE"
+  }
+  ```
+
+### 6.6 Soft-Delete Physical Room
+* **Endpoint:** `DELETE /api/v1/rooms/:id`
+* **Access:** Authenticated (`ADMIN` or assigned `HOTEL_MANAGER`)
+* **Behavior:** Sets `operationalStatus = OUT_OF_SERVICE` and sets `deletedAt = now()`.
