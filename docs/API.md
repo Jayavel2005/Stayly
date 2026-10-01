@@ -478,4 +478,87 @@ Physical room inventory endpoints are restricted to property management (`HOTEL_
   - `CHECKED_IN` → `CHECKED_OUT`
   - Terminal states (`CANCELLED`, `CHECKED_OUT`, `EXPIRED`, `NO_SHOW`) cannot be transitioned.
 
+---
+
+## 9. Payments & Payment Attempts (Phase 9)
+
+### 9.1 Process Payment Attempt
+* **Endpoint:** `POST /api/v1/payments`
+* **Access:** Authenticated (`CUSTOMER`, `ADMIN`)
+* **Headers:**
+  | Header | Type | Required | Description |
+  | :--- | :--- | :--- | :--- |
+  | `Idempotency-Key` | string / UUID | **Yes** | Client-generated token guaranteeing exactly-once execution |
+* **Request Payload (`CreatePaymentDto`):**
+  ```json
+  {
+    "bookingId": "10594466-e472-4e5b-887f-1e624e255292",
+    "paymentMethod": "CARD",
+    "simulateResult": "SUCCESS",
+    "simulateFailureReason": "Optional test reason"
+  }
+  ```
+  *(Note: `amount` and `userId` are never accepted from the client; they are derived authoritatively from the booking and authenticated JWT).*
+* **Success Response (`201 Created`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "7d549d09-7d54-4c2a-86a1-06aa54d2513e",
+      "bookingId": "10594466-e472-4e5b-887f-1e624e255292",
+      "bookingReference": "STY-202610-0001",
+      "transactionReference": "TXN-1727800000000-ABCDEF",
+      "status": "SUCCEEDED",
+      "amount": "15000.00",
+      "currency": "INR",
+      "gatewayProvider": "MOCK",
+      "paymentMethod": "CARD",
+      "failureReason": null,
+      "settledAt": "2026-10-01T12:00:01.000Z",
+      "createdAt": "2026-10-01T12:00:00.000Z",
+      "attempts": [
+        {
+          "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "attemptNumber": 1,
+          "idempotencyKey": "IDEMP-8c4c6f4e-202610-001",
+          "amount": "15000.00",
+          "currency": "INR",
+          "status": "SUCCEEDED",
+          "gatewayProvider": "MOCK",
+          "gatewayReference": "MOCK-TXN-1727800000000-3FA85F64",
+          "paymentMethod": "CARD",
+          "failureReason": null,
+          "createdAt": "2026-10-01T12:00:00.000Z",
+          "updatedAt": "2026-10-01T12:00:01.000Z"
+        }
+      ]
+    }
+  }
+  ```
+* **Error Semantics:**
+  - `400 BAD_REQUEST`: Missing `Idempotency-Key` header (`IDEMPOTENCY_KEY_REQUIRED`), booking not in payable state (`BOOKING_NOT_PAYABLE`), or expired reservation hold.
+  - `401 UNAUTHORIZED`: Missing or invalid JWT.
+  - `403 FORBIDDEN`: Non-customer role or customer attempting payment on another user's reservation (`FORBIDDEN_RESOURCE`).
+  - `404 NOT_FOUND`: Booking not found (`BOOKING_NOT_FOUND`).
+  - `409 CONFLICT`:
+    - `PAYMENT_ALREADY_COMPLETED`: Booking already successfully paid and confirmed.
+    - `IDEMPOTENCY_KEY_REUSED`: Same Idempotency-Key reused for a different booking.
+    - `PAYMENT_IN_PROGRESS`: Simultaneous active attempt in progress.
+
+### 9.2 Get Payment Details by ID
+* **Endpoint:** `GET /api/v1/payments/:id`
+* **Access:** Authenticated (`CUSTOMER` who owns the booking, `ADMIN`)
+* **Manager Isolation:** Hotel managers receive `403 FORBIDDEN` to prevent exposure of sensitive guest financial ledger data.
+* **Success Response (`200 OK`):**
+  Returns complete `PaymentResponseDto` including all historical `PaymentAttempt` records.
+
+### 9.3 List Payments
+* **Endpoint:** `GET /api/v1/payments`
+* **Access:** Authenticated (`CUSTOMER`, `ADMIN`)
+* **Scoping:**
+  - `CUSTOMER`: Filtered strictly to bookings belonging to the authenticated customer.
+  - `ADMIN`: Platform-wide ledger with optional `bookingId` filter and pagination.
+  - `HOTEL_MANAGER`: Receives `403 FORBIDDEN`.
+
+
 

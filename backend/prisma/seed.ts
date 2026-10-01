@@ -507,7 +507,7 @@ async function main() {
           currency: 'INR',
         },
       },
-      payments: {
+      payment: {
         create: {
           transactionReference: 'TXN-MOCK-202610-001',
           idempotencyKey: 'IDEMP-20261010-0001',
@@ -521,6 +521,28 @@ async function main() {
       },
     },
   });
+
+  const existingPayment = await prisma.payment.findUnique({
+    where: { bookingId: sampleBooking.id },
+  });
+  if (existingPayment) {
+    await prisma.paymentAttempt.upsert({
+      where: { idempotencyKey: 'IDEMP-20261010-0001' },
+      update: {},
+      create: {
+        paymentId: existingPayment.id,
+        bookingId: sampleBooking.id,
+        attemptNumber: 1,
+        idempotencyKey: 'IDEMP-20261010-0001',
+        amountCents: net,
+        currency: 'INR',
+        status: 'SUCCEEDED',
+        gatewayProvider: 'MOCK',
+        gatewayReference: 'TXN-MOCK-202610-001',
+        paymentMethod: 'UPI',
+      },
+    });
+  }
 
   // Seed Review for Completed Booking
   await prisma.review.upsert({

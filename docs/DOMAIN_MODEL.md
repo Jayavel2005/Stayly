@@ -363,4 +363,76 @@ PENDING (15m hold) ──► CONFIRMED (paid) ──► CHECKED_IN (arrival) ─
 - Active inventory holding states: `PENDING` (while `holdExpiresAt > NOW()`), `CONFIRMED`, `CHECKED_IN`.
 - Terminal / released inventory states: `CANCELLED`, `CHECKED_OUT`, `EXPIRED`, `NO_SHOW`.
 
+---
+
+## 11. Payments & Payment Attempts Ledger (Phase 9)
+
+### 11.1 Domain Architecture & Entity Separation
+Stayora strictly maintains a decoupled multi-attempt ledger separating logical payments from gateway execution attempts:
+
+```text
+Customer
+   │ (owns)
+   ▼
+Booking (status: PENDING ──► CONFIRMED)
+   │ 1
+   │ (1:1 logical relationship)
+   ▼
+Payment (status: PENDING ──► SUCCEEDED / FAILED)
+   │ 1
+   │ (1:N audit trail)
+   ▼
+PaymentAttempt (status: CREATED ──► PROCESSING ──► SUCCEEDED / FAILED)
+   │
+   ▼
+PaymentGateway Abstraction
+   │
+   ▼
+MockPaymentGateway (Deterministic testing simulator)
+```
+
+1. **`Payment` (Logical Record)**: Represents the authoritative payment contract associated with a `Booking`. Exactly one logical `Payment` record exists per booking (`booking_id` has a `UNIQUE` constraint).
+2. **`PaymentAttempt` (Audit Log Unit)**: Represents an individual gateway submission. When an attempt fails (e.g., card declined), the attempt remains permanently recorded as `FAILED` in the immutable audit ledger. Subsequent retries create a new sequential `PaymentAttempt` (Attempt #2, Attempt #3) rather than overwriting historical attempts.
+3. **`PaymentGateway` Interface**: Decouples domain logic from gateway-specific SDKs. All gateway operations return domain-level `GatewayPaymentResult` structs.
+4. **`MockPaymentGateway`**: Deterministic test simulator supporting `SUCCESS`, `FAILED`, and configurable test reasons without random flakes or network delays.
+
+### 11.2 Database Constraints & Integrity Invariants
+* **`payments.booking_id UNIQUE`**: Enforces that a reservation can never have duplicate conflicting logical payments.
+* **`payment_attempts.idempotency_key UNIQUE`**: Enforces strict database-level idempotency across all attempts.
+* **`payment_attempts(payment_id, attempt_number) UNIQUE`**: Guarantees sequential, monotonic attempt numbering per payment.
+* **`chk_payments_status`**: Enforces valid payment statuses: `PENDING`, `SUCCEEDED`, `FAILED`, `REFUNDED`, `PARTIALLY_REFUNDED`.
+* **`chk_payment_attempts_status`**: Enforces attempt statuses: `CREATED`, `PROCESSING`, `SUCCEEDED`, `FAILED`.
+* **`chk_payments_amount` & `chk_payment_attempts_amount`**: Enforces non-negative monetary amounts (`amount_cents >= 0`).
+
+### 11.3 Idempotency Architecture & Scoping
+* **Scope**: Idempotency keys are client-provided unique tokens scoped to the booking. If a client retries a request with the identical key for the same booking, the backend replays the exact previous outcome without duplicate attempts or charge operations.
+* **Cross-Booking Defense**: Reusing an existing `Idempotency-Key` across different bookings is rejected with `409 CONFLICT` (`IDEMPOTENCY_KEY_REUSED`).
+* **Concurrency Protection**: Simultaneous requests with identical keys are deduplicated under transactional row locks and database unique constraints (`P2002`). Simultaneous requests with different keys on the same booking are serialized via pessimistic locking (`SELECT ... FOR UPDATE`), ensuring exactly one attempt succeeds and the second fails with `PAYMENT_ALREADY_COMPLETED` (409).
+
+### 11.4 Payment State Machine
+```text
+           ┌──────────────┐
+           │   PENDING    │◄────────┐ (Retry with new attempt)
+           └──────┬───────┘         │
+                  │                 │
+         ┌────────┴────────┐        │
+         ▼                 ▼        │
+   ┌───────────┐     ┌───────────┐  │
+   │ SUCCEEDED │     │  FAILED   ├──┘
+   └─────┬─────┘     └───────────┘
+         │ (Terminal)
+         ▼
+   Booking: CONFIRMED
+```
+
+- When an attempt succeeds:
+  - `PaymentAttempt` → `SUCCEEDED`
+  - `Payment` → `SUCCEEDED` (`settledAt` populated)
+  - `Booking` → `CONFIRMED`
+- When an attempt fails:
+  - `PaymentAttempt` → `FAILED` (`failureReason` populated)
+  - `Payment` → `FAILED`
+  - `Booking` remains `PENDING` (allowing retry before temporary reservation hold expires).
+
+
 

@@ -211,9 +211,10 @@ model Booking {
   bookingRooms  BookingRoom[]
   priceSnapshot BookingPriceSnapshot?
   guests        BookingGuest[]
-  payments      Payment[]
-  refunds       Refund[]
-  review        Review?
+  payment            Payment?
+  paymentAttempts    PaymentAttempt[]
+  refunds            Refund[]
+  review             Review?
 
   @@index([customerId, createdAt(sort: Desc)])
   @@index([hotelId, status, checkInDate])
@@ -277,24 +278,50 @@ model BookingPriceSnapshot {
 // -----------------------------------------------------------------------------
 
 model Payment {
-  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  bookingId            String    @map("booking_id") @db.Uuid
-  transactionReference String    @unique @map("transaction_reference") @db.VarChar(100)
-  idempotencyKey       String    @unique @map("idempotency_key") @db.VarChar(100)
-  amountCents          BigInt    @map("amount_cents")
-  currency             String    @default("INR") @db.VarChar(3)
-  status               String    @default("PENDING") @db.VarChar(20)
-  gatewayProvider      String    @default("MOCK") @map("gateway_provider") @db.VarChar(50)
-  paymentMethod        String?   @map("payment_method") @db.VarChar(50)
-  failureReason        String?   @map("failure_reason") @db.Text
-  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  settledAt            DateTime? @map("settled_at") @db.Timestamptz
+  id                   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId            String           @unique @map("booking_id") @db.Uuid
+  transactionReference String           @unique @map("transaction_reference") @db.VarChar(100)
+  idempotencyKey       String?          @map("idempotency_key") @db.VarChar(100)
+  amountCents          BigInt           @map("amount_cents")
+  currency             String           @default("INR") @db.VarChar(3)
+  status               String           @default("PENDING") @db.VarChar(20)
+  gatewayProvider      String           @default("MOCK") @map("gateway_provider") @db.VarChar(50)
+  paymentMethod        String?          @map("payment_method") @db.VarChar(50)
+  failureReason        String?          @map("failure_reason") @db.Text
+  createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  settledAt            DateTime?        @map("settled_at") @db.Timestamptz
 
-  booking Booking  @relation(fields: [bookingId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  refunds Refund[]
+  booking  Booking          @relation(fields: [bookingId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  attempts PaymentAttempt[]
+  refunds  Refund[]
 
-  @@index([bookingId])
   @@map("payments")
+}
+
+model PaymentAttempt {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paymentId        String    @map("payment_id") @db.Uuid
+  bookingId        String    @map("booking_id") @db.Uuid
+  attemptNumber    Int       @map("attempt_number") @db.SmallInt
+  idempotencyKey   String    @unique @map("idempotency_key") @db.VarChar(100)
+  amountCents      BigInt    @map("amount_cents")
+  currency         String    @default("INR") @db.VarChar(3)
+  status           String    @default("CREATED") @db.VarChar(20)
+  gatewayProvider  String    @default("MOCK") @map("gateway_provider") @db.VarChar(50)
+  gatewayReference String?   @map("gateway_reference") @db.VarChar(100)
+  paymentMethod    String?   @map("payment_method") @db.VarChar(50)
+  failureReason    String?   @map("failure_reason") @db.Text
+  metadata         Json?     @db.JsonB
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([paymentId, attemptNumber])
+  @@index([paymentId])
+  @@index([bookingId])
+  @@map("payment_attempts")
 }
 
 model Refund {
