@@ -13,4 +13,14 @@
     "preview": "npm --prefix apps/manager-web run preview"
   },
   "devDependencies": {}
+  "description": "Stayora — Luxury Hotel Reservation & Operations Platform",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm --prefix apps/customer-web run dev",
+    "dev:customer": "npm --prefix apps/customer-web run dev",
+    "build": "npm --prefix apps/customer-web run build",
+    "preview": "npm --prefix apps/customer-web run preview"
+  }
 }
