@@ -8,6 +8,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { HotelsModule } from './modules/hotels/hotels.module';
 import { RoomTypesModule } from './modules/room-types/room-types.module';
 import { RoomsModule } from './modules/rooms/rooms.module';
+import { AvailabilityModule } from './modules/availability/availability.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { RoomsModule } from './modules/rooms/rooms.module';
     HotelsModule,
     RoomTypesModule,
     RoomsModule,
+    AvailabilityModule,
   ],
 })
 export class AppModule {}

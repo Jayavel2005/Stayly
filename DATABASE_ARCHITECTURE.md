@@ -1980,3 +1980,37 @@ Phase 2 (PostgreSQL + Prisma Database Foundation) has been completely implemente
 **Architecture Status:** Phase 2 Complete & Verified. Ready for Phase 3 (Authentication & Identity Management).
 **Approved By:** Principal Database Architect & System Engineering Team  
 
+---
+
+## 51. Phase 7 Query Architecture: Availability & Discovery Foundation
+
+### 51.1 Single-Query Relational Availability Pattern
+Rather than loading physical rooms and active bookings into Node.js application memory, availability is evaluated strictly in PostgreSQL using indexed relational joins:
+```sql
+SELECT r.id
+FROM rooms r
+WHERE r.room_type_id = $roomTypeId
+  AND r.deleted_at IS NULL
+  AND r.operational_status = 'AVAILABLE'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM booking_rooms br
+    JOIN bookings b ON b.id = br.booking_id
+    WHERE br.room_id = r.id
+      AND br.status IN ('RESERVED', 'OCCUPIED')
+      AND br.check_in_date < $requestedCheckOut
+      AND br.check_out_date > $requestedCheckIn
+      AND b.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
+      AND (b.hold_expires_at IS NULL OR b.hold_expires_at > NOW())
+  );
+```
+
+### 51.2 Index Utilization & Query Plan
+- **Primary Overlap Lookup:** `@@index([roomId, checkInDate, checkOutDate])` on `booking_rooms` allows index-only or index-range scans to filter overlapping date intervals.
+- **Physical Room Filter:** `@@index([roomTypeId, operationalStatus])` on `rooms` avoids table scans when filtering operationally `AVAILABLE` inventory units.
+- **Hotel Discovery Filters:** B-Tree indexes on `hotels(city)`, `hotels(starRating)`, and `hotels(isActive)` support fast pagination and multi-attribute customer queries.
+
+### 51.3 Transactional Isolation Notice for Future Phase 8
+Phase 7 queries operate under standard `READ COMMITTED` isolation for search performance. In Phase 8, the Booking Engine must promote to `REPEATABLE READ` or utilize `SELECT ... FOR UPDATE SKIP LOCKED` on the `rooms` table to prevent race conditions during concurrent reservations.
+
+

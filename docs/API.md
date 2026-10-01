@@ -278,3 +278,102 @@ Physical room inventory endpoints are restricted to property management (`HOTEL_
 * **Endpoint:** `DELETE /api/v1/rooms/:id`
 * **Access:** Authenticated (`ADMIN` or assigned `HOTEL_MANAGER`)
 * **Behavior:** Sets `operationalStatus = OUT_OF_SERVICE` and sets `deletedAt = now()`.
+
+---
+
+## 7. Hotel Search & Date Availability (Phase 7)
+
+### 7.1 Search Available Hotels
+* **Endpoint:** `GET /api/v1/search/hotels`
+* **Access:** Public (No authentication required)
+* **Date Semantics:** Half-open interval `[checkIn, checkOut)` where check-in is inclusive and check-out is exclusive.
+* **Overlap Invariant:** A room is allocated/conflicting if `existing.checkIn < requested.checkOut AND existing.checkOut > requested.checkIn`.
+* **Inventory Rule:** A physical room is available if and only if `operationalStatus = AVAILABLE` AND it has no active overlapping `BookingRoom` record in `RESERVED` or `OCCUPIED` status under a non-expired booking in `PENDING`, `CONFIRMED`, or `CHECKED_IN` status.
+* **Query Parameters:**
+  | Parameter | Type | Required | Default | Description |
+  | :--- | :--- | :--- | :--- | :--- |
+  | `checkIn` | string (`YYYY-MM-DD`) | **Yes** | - | Requested calendar check-in date (`>= today`) |
+  | `checkOut` | string (`YYYY-MM-DD`) | **Yes** | - | Requested calendar check-out date (`> checkIn`) |
+  | `guests` | integer | No | `1` | Number of guests (capacity check: `roomType.maxOccupancy >= guests`) |
+  | `rooms` | integer | No | `1` | Number of rooms requested per room category |
+  | `city` | string | No | - | Case-insensitive city substring filter |
+  | `state` | string | No | - | State/province filter |
+  | `country` | string | No | - | Country filter |
+  | `search` | string | No | - | Hotel name or description search |
+  | `hotelId` | UUID | No | - | Restrict search to specific hotel |
+  | `roomTypeId` | UUID | No | - | Restrict search to specific room category |
+  | `starRating` | integer (1–5) | No | - | Exact hotel star classification |
+  | `minRating` | integer (1–5) | No | - | Minimum star rating threshold |
+  | `page` | integer | No | `1` | Page number (min: 1) |
+  | `limit` | integer | No | `20` | Items per page (min: 1, max: 100) |
+  | `sortBy` | string | No | `createdAt` | Sort field: `name`, `starRating`, `createdAt`, `price` |
+  | `sortOrder` | string | No | `asc` | Direction: `asc`, `desc` |
+
+* **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "items": [
+        {
+          "id": "44444444-4444-4444-8444-444444444444",
+          "hotelId": "44444444-4444-4444-8444-444444444444",
+          "name": "Stayora Grand Palace",
+          "hotelName": "Stayora Grand Palace",
+          "slug": "stayora-grand-palace",
+          "city": "Mumbai",
+          "state": "Maharashtra",
+          "country": "India",
+          "starRating": 5,
+          "minPriceCents": "450000",
+          "totalAvailableRooms": 7,
+          "roomTypes": [
+            {
+              "id": "57391b9b-ed2d-4e3d-bb09-63728b53254f",
+              "roomTypeId": "57391b9b-ed2d-4e3d-bb09-63728b53254f",
+              "name": "Classic Heritage Room",
+              "slug": "classic-heritage-room",
+              "maxOccupancy": 2,
+              "basePriceCents": "450000",
+              "currency": "INR",
+              "bedType": "KING",
+              "availableRooms": 2,
+              "totalRooms": 3,
+              "totalOperationalRooms": 3
+            }
+          ]
+        }
+      ],
+      "meta": {
+        "page": 1,
+        "limit": 20,
+        "total": 1,
+        "totalPages": 1,
+        "checkIn": "2026-10-10",
+        "checkOut": "2026-10-12",
+        "totalNights": 2,
+        "guests": 2,
+        "rooms": 1
+      }
+    }
+  }
+  ```
+
+### 7.2 Get Hotel Availability
+* **Endpoint:** `GET /api/v1/availability/hotels/:hotelId`
+* **Access:** Public (No authentication required)
+* **Query Parameters:** `checkIn` (required), `checkOut` (required), `guests` (optional), `rooms` (optional)
+* **Description:** Returns detailed date-range availability breakdown across all active room categories for the specified hotel property.
+* **Error Semantics:** `404 Not Found` if hotel is not found or inactive.
+
+### 7.3 Get RoomType Availability
+* **Endpoint:** `GET /api/v1/availability/room-types/:roomTypeId`
+* **Access:** Public (No authentication required)
+* **Query Parameters:** `checkIn` (required), `checkOut` (required)
+* **Description:** Returns availability summary including `totalOperationalRooms`, `occupiedRooms`, `availableRooms`, `hasAvailability`, and concrete available room IDs.
+* **Error Semantics:** `404 Not Found` if room category is not found or inactive.
+
+### 7.4 Architectural Note: Search vs. Booking Guarantee
+* **Search is a Read Operation:** Search results reflect instantaneous inventory state and do **NOT** lock or reserve inventory.
+* **Atomic Booking Reservation:** Phase 8 Booking Engine must independently perform transactional availability validation with database row locking (`SELECT FOR UPDATE` / serializable transaction).
+

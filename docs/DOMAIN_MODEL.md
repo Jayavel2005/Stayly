@@ -227,3 +227,80 @@ Hotel A (Mumbai)
 - `Room` cannot reference a non-existent `RoomType` (`onDelete: Restrict`).
 - Deleting a `RoomType` that still contains active physical rooms is blocked (`409 Conflict` - `ROOM_TYPE_HAS_ROOMS`).
 - Soft-deletion sets `deletedAt = now()` and sets rooms to `OUT_OF_SERVICE`, preserving historical booking snapshots and audit logs.
+
+---
+
+## 9. Hotel Discovery & Date-Range Availability (Phase 7)
+
+### 9.1 Temporal Date Semantics: `[checkIn, checkOut)`
+Hotel reservations operate on **half-open date intervals**:
+```text
+[checkIn, checkOut)
+```
+- **`checkIn` (inclusive):** The guest occupies the room beginning in the afternoon of the check-in date.
+- **`checkOut` (exclusive):** The guest vacates the room in the morning/noon of the check-out date.
+
+**Contiguity Example:**
+```text
+Booking A:  2026-10-10 → 2026-10-12
+Booking B:  2026-10-12 → 2026-10-15
+```
+Because check-out is exclusive, Booking A and Booking B **do not overlap**. Room 101 can be checked out on October 12th at 11:00 AM, cleaned by housekeeping, and checked in by a new guest at 2:00 PM on October 12th.
+
+### 9.2 The Overlap Theorem
+Two date ranges overlap if and only if:
+```sql
+existing.check_in_date < requested.check_out_date
+AND
+existing.check_out_date > requested.check_in_date
+```
+This bidirectional inequality correctly handles all containment, partial overlap, and identical interval scenarios, while correctly avoiding false collisions on back-to-back turnaround dates (`existing.check_out == requested.check_in`).
+
+### 9.3 Authoritative Availability Equation
+A room is not "available" in the abstract; it is available **for a specific date range**:
+```text
+Date-Available Room =
+    Physical Room is operationally AVAILABLE
+    +
+    RoomType and Hotel are active and non-deleted
+    +
+    Room has NO conflicting, active allocation for requested [checkIn, checkOut)
+```
+
+**Conflicting Allocation Definition:**
+A `BookingRoom` record is considered conflicting if:
+1. `status IN ('RESERVED', 'OCCUPIED')`
+2. Overlaps requested date range: `checkInDate < requestedCheckOut AND checkOutDate > requestedCheckIn`
+3. Associated `Booking.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')`
+4. For temporary inventory holds (`Booking.status = 'PENDING'`), the hold has not expired (`holdExpiresAt IS NULL OR holdExpiresAt > NOW()`).
+
+### 9.4 Database Query Strategy: `NOT EXISTS` Relational Filtering
+Availability is evaluated inside PostgreSQL using relational filtering rather than loading all rooms into application memory:
+```prisma
+rooms: {
+  some: {
+    deletedAt: null,
+    operationalStatus: 'AVAILABLE',
+    bookingRooms: {
+      none: {
+        status: { in: ['RESERVED', 'OCCUPIED'] },
+        checkInDate: { lt: checkOutDate },
+        checkOutDate: { gt: checkInDate },
+        booking: {
+          status: { in: ['PENDING', 'CONFIRMED', 'CHECKED_IN'] },
+          OR: [
+            { holdExpiresAt: null },
+            { holdExpiresAt: { gt: new Date() } },
+          ],
+        },
+      },
+    },
+  },
+}
+```
+This maps directly to an indexed PostgreSQL `NOT EXISTS` subquery, avoiding $N+1$ queries.
+
+### 9.5 Search vs. Reservation Architectural Boundary
+- **Search (`Phase 7`):** Customer discovery read-path. Answers *"Which rooms are currently unoccupied for these dates?"* It does not mutate inventory or guarantee that inventory will remain vacant.
+- **Booking Engine (`Phase 8`):** Customer reservation write-path. Must perform atomic availability checks and hold acquisition within a PostgreSQL transaction with explicit row-level locking (`FOR UPDATE`) or serializable isolation.
+
