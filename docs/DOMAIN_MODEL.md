@@ -518,6 +518,64 @@ Stayora enforces a centralized, authoritative domain state machine implemented i
   - `booking.checked_out`
   - `booking.expired`
 
+---
+
+## 13. Reviews & Ratings Domain Model (Phase 11)
+
+```text
+Customer
+   ↓
+Completed Booking (status = CHECKED_OUT / COMPLETED)
+   ↓
+Verified Stay at Hotel
+   ↓
+Eligible to Review
+   ↓
+Review Record (1-to-1 with Booking)
+```
+
+### 13.1 Core Invariant: Verified Stay Eligibility Rule
+A customer is **never** permitted to review a hotel merely by knowing its public identifier or querying its endpoint.
+A customer is eligible to submit a review if and only if all three server-enforced conditions hold:
+1. **Ownership**: `booking.customerId === currentUser.id` (Authoritative customer identity from JWT; prevents fake reviews and IDOR).
+2. **Completion**: `booking.status === CHECKED_OUT || booking.status === COMPLETED` (Guest has physically completed the stay; unconfirmed, pending, or cancelled bookings cannot be reviewed).
+3. **Property Relationship**: `hotelId = booking.hotelId` (Authoritatively linked to the actual hotel booked; the client cannot specify or mutate the hotel).
+
+### 13.2 One Review Per Booking & Concurrency Protection
+* **Single Review Invariant**: Every completed booking produces at most one review.
+* **Database Unique Invariant**: PostgreSQL table `reviews` enforces `@unique @map("booking_id")` (`reviews_booking_id_key`).
+* **Concurrent Race Defense**: Even under simultaneous concurrent HTTP requests submitting reviews for the same booking:
+  - Exactly one request succeeds in inserting the review (`201 CREATED`).
+  - The second request collides on `reviews_booking_id_key`, triggering Prisma `P2002`, which is caught and mapped to `409 CONFLICT` (`REVIEW_ALREADY_EXISTS`).
+
+### 13.3 Review Immutability of Relationships
+Once created, a review's relational anchors are permanent and immutable:
+- `bookingId`: Permanent link to verified reservation.
+- `customerId`: Permanent link to author.
+- `hotelId`: Permanent link to property.
+The client can never change these fields or transfer a review from Hotel A to Hotel B. Only `rating` (1–5), optional `title`, and `comment` (plain text, 5–2000 characters) may be updated.
+
+### 13.4 Rating Rules & PostgreSQL Check Constraint
+* Ratings are strictly integers between `1` and `5` inclusive.
+* Enforced via class-validator `@Min(1)`, `@Max(5)`, `@IsInt()`, and backed by PostgreSQL table check constraint `chk_reviews_rating` (`CHECK ("rating" BETWEEN 1 AND 5)`).
+* Floating-point ratings (e.g. 4.5) are strictly rejected.
+
+### 13.5 Rating Aggregation & Precision
+* **PostgreSQL Engine Aggregation**: Average ratings, total counts, and distribution buckets are computed entirely within PostgreSQL using `_avg`, `_count`, and `groupBy`. Reviews are never loaded en masse into JavaScript memory to compute summaries.
+* **Precision Convention**: `averageRating` is consistently rounded to one decimal place (`Math.round(avg * 10) / 10`).
+* **Distribution Buckets**: A fixed dictionary mapping `'1'`, `'2'`, `'3'`, `'4'`, `'5'` to review count totals.
+
+### 13.6 Privacy-Preserving Reviewer Presentation
+* Public reviews conceal all sensitive customer information:
+  - Passwords and password hashes are never selected.
+  - Customer emails and phone numbers are excluded.
+  - Reviewer is represented as a safe display name (e.g. `"Aarav S."` or `"Guest"`).
+
+### 13.7 Administrative Moderation & Manager Access Boundary
+* **Administrative Moderation**: Admins can toggle `isPublished` (`PATCH /api/v1/admin/reviews/:id/moderation`). Concealed reviews (`isPublished: false`) are immediately omitted from public listing and public aggregation.
+* **Manager Isolation**: Hotel managers can view reviews for properties they manage via `GET /api/v1/manager/hotels/:hotelId/reviews`. Manager authorization is enforced strictly via `HotelAuthorizationService.assertManagerAccess`. Managers cannot delete or modify customer reviews.
+
+
 
 
 

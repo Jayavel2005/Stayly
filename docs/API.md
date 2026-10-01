@@ -684,6 +684,197 @@ Physical room inventory endpoints are restricted to property management (`HOTEL_
   - `CONFIRMED -> CANCELLED` (Delegates to cancellation)
   - `CONFIRMED -> NO_SHOW` (Releases rooms to `RELEASED`)
 
+---
+
+## 11. Reviews & Ratings API Specification (Phase 11)
+
+### 11.1 Create Review
+* **Endpoint:** `POST /api/v1/reviews`
+* **Access:** Authenticated `CUSTOMER`
+* **Headers:** `Authorization: Bearer <JWT>`
+* **Eligibility Preconditions (Server-Enforced):**
+  1. `booking.customerId === currentUser.id` (Customer ownership verification; IDOR defense).
+  2. `booking.status === CHECKED_OUT || booking.status === COMPLETED` (Only verified, completed stays can be reviewed).
+  3. `hotelId = booking.hotelId` (Derived authoritatively from booking; client cannot spoof hotel).
+  4. One review per booking: Enforced by application check and PostgreSQL database unique constraint `reviews_booking_id_key`. Concurrent submissions safely return `409 REVIEW_ALREADY_EXISTS`.
+* **Request Body:**
+  ```json
+  {
+    "bookingId": "8b9c1d2e-3f4a-5b6c-7d8e-9f0a1b2c3d4e",
+    "rating": 5,
+    "title": "Outstanding Seaside Hospitality",
+    "comment": "The ocean-view suite was immaculate and the concierge service exceeded expectations."
+  }
+  ```
+* **Validation Rules:**
+  - `bookingId`: Valid UUID (required).
+  - `rating`: Integer between `1` and `5` inclusive (required; floating points and values outside range are rejected with `400`).
+  - `title`: Optional string, trimmed, max 150 characters.
+  - `comment`: String, trimmed, min 5 characters, max 2000 characters (plain text only; rich HTML is not stored).
+* **Success Response (`201 CREATED`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+      "bookingId": "8b9c1d2e-3f4a-5b6c-7d8e-9f0a1b2c3d4e",
+      "hotelId": "44444444-4444-4444-8444-444444444444",
+      "rating": 5,
+      "title": "Outstanding Seaside Hospitality",
+      "comment": "The ocean-view suite was immaculate and the concierge service exceeded expectations.",
+      "isPublished": true,
+      "createdAt": "2026-10-01T14:30:00.000Z",
+      "updatedAt": "2026-10-01T14:30:00.000Z",
+      "reviewer": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "displayName": "Aarav S."
+      }
+    }
+  }
+  ```
+* **Error Responses:**
+  - `400 BAD_REQUEST`: Invalid input format, or `BOOKING_NOT_COMPLETED` (stay not completed).
+  - `401 UNAUTHORIZED`: Missing or invalid authentication token.
+  - `403 FORBIDDEN`: `BOOKING_NOT_OWNED` (Customer does not own reservation).
+  - `404 NOT_FOUND`: `BOOKING_NOT_FOUND` (Reservation not found).
+  - `409 CONFLICT`: `REVIEW_ALREADY_EXISTS` (Duplicate review submission for booking).
+
+### 11.2 Update Review
+* **Endpoint:** `PATCH /api/v1/reviews/:id`
+* **Access:** Authenticated `CUSTOMER` (Review author) or `ADMIN`
+* **Immutable Relationships:** `bookingId`, `customerId`, and `hotelId` cannot be changed. Only `rating`, `title`, and `comment` are mutable.
+* **Request Body:**
+  ```json
+  {
+    "rating": 4,
+    "title": "Updated Feedback",
+    "comment": "Hotel staff promptly resolved our breakfast feedback."
+  }
+  ```
+* **Success Response (`200 OK`):** Updated `ReviewResponse`.
+* **Error Responses:**
+  - `403 FORBIDDEN`: `FORBIDDEN_RESOURCE` (Attempting to edit someone else's review).
+  - `404 NOT_FOUND`: `REVIEW_NOT_FOUND`.
+
+### 11.3 Delete Review
+* **Endpoint:** `DELETE /api/v1/reviews/:id`
+* **Access:** Authenticated `CUSTOMER` (Review author) or `ADMIN`
+* **Behavior:** Permanently deletes review. Hotel rating aggregation adjusts immediately.
+* **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Review deleted successfully."
+  }
+  ```
+
+### 11.4 Public Hotel Reviews & Aggregation
+* **Endpoint:** `GET /api/v1/hotels/:hotelId/reviews`
+* **Access:** Public (No authentication required)
+* **Query Parameters:**
+  | Parameter | Type | Default | Description |
+  | :--- | :--- | :--- | :--- |
+  | `page` | integer | `1` | Page number |
+  | `limit` | integer | `20` | Items per page (max: 100) |
+  | `rating` | integer | - | Filter by exact rating (1–5) |
+  | `sortBy` | string | `newest` | Allowlisted: `newest`, `oldest`, `highest`, `lowest` |
+* **Aggregation Calculation:** Calculated entirely within PostgreSQL via `_avg`, `_count`, and `groupBy`:
+  - `averageRating`: Rounded to 1 decimal place.
+  - `reviewCount`: Total count of published reviews.
+  - `ratingDistribution`: Count of reviews for each star rating (1 through 5).
+* **Privacy Safe Representation:** Reviews return only safe public data (`reviewer: { id, displayName: "FirstName L." }`). Sensitive customer emails, phone numbers, and password hashes are never exposed.
+* **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "items": [
+        {
+          "id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+          "bookingId": "8b9c1d2e-3f4a-5b6c-7d8e-9f0a1b2c3d4e",
+          "hotelId": "44444444-4444-4444-8444-444444444444",
+          "rating": 5,
+          "title": "Outstanding Seaside Hospitality",
+          "comment": "The ocean-view suite was immaculate and the concierge service exceeded expectations.",
+          "isPublished": true,
+          "createdAt": "2026-10-01T14:30:00.000Z",
+          "updatedAt": "2026-10-01T14:30:00.000Z",
+          "reviewer": {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "displayName": "Aarav S."
+          }
+        }
+      ],
+      "meta": {
+        "page": 1,
+        "limit": 20,
+        "total": 42,
+        "totalPages": 3
+      },
+      "summary": {
+        "averageRating": 4.7,
+        "reviewCount": 42,
+        "ratingDistribution": {
+          "1": 1,
+          "2": 1,
+          "3": 2,
+          "4": 8,
+          "5": 30
+        }
+      }
+    }
+  }
+  ```
+
+### 11.5 Customer Review History
+* **Endpoint:** `GET /api/v1/reviews/me`
+* **Access:** Authenticated `CUSTOMER`
+* **Query Parameters:** `page`, `limit`, `sortBy`
+* **Success Response (`200 OK`):** Paginated reviews written by current customer.
+
+### 11.6 Check Review Eligibility
+* **Endpoint:** `GET /api/v1/bookings/:bookingId/review-eligibility`
+* **Access:** Authenticated `CUSTOMER`
+* **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "eligible": true,
+      "bookingId": "8b9c1d2e-3f4a-5b6c-7d8e-9f0a1b2c3d4e",
+      "reason": null
+    }
+  }
+  ```
+  Or if not eligible:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "eligible": false,
+      "bookingId": "8b9c1d2e-3f4a-5b6c-7d8e-9f0a1b2c3d4e",
+      "reason": "BOOKING_NOT_COMPLETED"
+    }
+  }
+  ```
+
+### 11.7 Manager Hotel Reviews
+* **Endpoint:** `GET /api/v1/manager/hotels/:hotelId/reviews`
+* **Access:** Authenticated `HOTEL_MANAGER` (assigned to hotel) or `ADMIN`
+* **Authorization Invariant:** Manager access verified via `HotelAuthorizationService.assertManagerAccess`.
+
+### 11.8 Administrative Moderation
+* **Endpoint:** `PATCH /api/v1/admin/reviews/:id/moderation`
+* **Access:** Authenticated `ADMIN`
+* **Body:**
+  ```json
+  {
+    "isPublished": false
+  }
+  ```
+* **Behavior:** Toggles review visibility. Concealed (`isPublished: false`) reviews are excluded from public discovery and public rating aggregation.
+
+
 
 
 

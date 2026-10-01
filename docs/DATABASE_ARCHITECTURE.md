@@ -212,3 +212,54 @@ WHERE br.room_id IN (:operationalRoomIds)
 ### 6.3 Audit Ledger Integration
 All lifecycle events are recorded in `audit_logs` with actor UUID, action name (`booking.cancelled`, `booking.checked_in`, `booking.checked_out`, `booking.expired`), timestamp, entity UUID, and state changes (`oldValues`, `newValues`).
 
+---
+
+## 7. Reviews & Ratings Architecture (Phase 11)
+
+### 7.1 Relational Schema (`reviews` Table)
+```sql
+CREATE TABLE reviews (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id UUID NOT NULL UNIQUE REFERENCES bookings(id) ON DELETE CASCADE,
+    customer_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    hotel_id UUID NOT NULL REFERENCES hotels(id) ON DELETE CASCADE,
+    rating SMALLINT NOT NULL CHECK ("rating" BETWEEN 1 AND 5),
+    title VARCHAR(150),
+    comment TEXT NOT NULL,
+    is_published BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 7.2 Database Invariants & Storage Integrity
+1. **One-Review-Per-Booking Uniqueness (`reviews_booking_id_key`)**:
+   - Backed by a strict PostgreSQL unique B-Tree index on `booking_id`.
+   - Protects against simultaneous concurrent API requests. When two requests race, the database serializes the insert and rejects the second with a unique constraint violation (`P2002`), which the application safely converts to `409 REVIEW_ALREADY_EXISTS`.
+2. **Rating Range Integrity (`chk_reviews_rating`)**:
+   - Check constraint `CHECK ("rating" BETWEEN 1 AND 5)` enforces that ratings can never be negative, zero, or exceed 5 stars at the database level.
+3. **Immutable Relational Anchors**:
+   - `booking_id`, `customer_id`, and `hotel_id` cannot be altered after creation. Only `rating`, `title`, and `comment` are editable.
+
+### 7.3 Indexing & Performance Design
+* **`reviews(hotel_id, is_published)` composite index**: Enables sub-millisecond retrieval of published reviews for hotel landing pages, avoiding full table scans.
+* **`reviews(booking_id)` unique index**: Enables instantaneous O(1) existence lookups for the pre-flight eligibility check (`GET /api/v1/bookings/:bookingId/review-eligibility`).
+* **`reviews(customer_id)` foreign key index**: Powers customer review history (`GET /api/v1/reviews/me`).
+
+### 7.4 In-Database Rating Aggregations
+To prevent catastrophic Node.js memory pressure, average ratings and distribution counts are never computed in JavaScript memory:
+```sql
+-- Average rating and total review count
+SELECT AVG(rating) as avg_rating, COUNT(*) as review_count
+FROM reviews
+WHERE hotel_id = :hotelId AND is_published = true;
+
+-- Star distribution buckets (1 to 5 stars)
+SELECT rating, COUNT(*) as count
+FROM reviews
+WHERE hotel_id = :hotelId AND is_published = true
+GROUP BY rating;
+```
+Results are rounded to one decimal place consistently (`Math.round(rawAvg * 10) / 10`) and returned alongside paginated items.
+
+
