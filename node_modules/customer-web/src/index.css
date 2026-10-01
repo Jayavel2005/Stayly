@@ -1,0 +1,136 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Canvas & Base Text (Warm Sand #faf9f6 & Deep Charcoal #23211d) */
+    --background: 40 20% 98%;
+    --foreground: 30 10% 12%;
+
+    /* Cards & Surfaces */
+    --card: 0 0% 100%;
+    --card-foreground: 30 10% 12%;
+
+    /* Popovers & Menus */
+    --popover: 0 0% 100%;
+    --popover-foreground: 30 10% 12%;
+
+    /* Primary Brand (Deep Ocean #163952) */
+    --primary: 206 58% 21%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary Controls (#f4f2ec) */
+    --secondary: 40 18% 94%;
+    --secondary-foreground: 30 10% 23%;
+
+    /* Muted Elements (#878071) */
+    --muted: 40 18% 94%;
+    --muted-foreground: 38 9% 49%;
+
+    /* Interactive Hover Accents (#f0f5fa) */
+    --accent: 206 40% 96%;
+    --accent-foreground: 206 58% 21%;
+
+    /* Semantic Statuses */
+    --success: 142 71% 29%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 37%;
+    --warning-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 42%;
+    --destructive-foreground: 0 0% 100%;
+
+    --info: 199 89% 32%;
+    --info-foreground: 0 0% 100%;
+
+    /* Structural Boundaries (#e7e4dc) */
+    --border: 38 16% 89%;
+    --input: 38 16% 89%;
+    --ring: 204 53% 46%;
+
+    /* Radius Benchmark */
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Obsidian-warm canvas #141311 */
+    --background: 30 9% 7%;
+    --foreground: 40 20% 98%;
+
+    --card: 30 10% 12%;
+    --card-foreground: 40 20% 98%;
+
+    --popover: 30 10% 12%;
+    --popover-foreground: 40 20% 98%;
+
+    --primary: 204 53% 59%;
+    --primary-foreground: 30 9% 7%;
+
+    --secondary: 30 10% 23%;
+    --secondary-foreground: 40 20% 98%;
+
+    --muted: 30 10% 18%;
+    --muted-foreground: 38 10% 63%;
+
+    --accent: 30 10% 18%;
+    --accent-foreground: 204 53% 84%;
+
+    --success: 142 69% 58%;
+    --success-foreground: 30 9% 7%;
+
+    --warning: 43 96% 56%;
+    --warning-foreground: 30 9% 7%;
+
+    --destructive: 0 91% 71%;
+    --destructive-foreground: 30 9% 7%;
+
+    --info: 199 89% 61%;
+    --info-foreground: 30 9% 7%;
+
+    --border: 30 10% 23%;
+    --input: 30 10% 23%;
+    --ring: 204 53% 59%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased min-h-screen font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Dark mode photography brightness protection per Design System line 263 */
+  .dark img {
+    filter: brightness(0.92) contrast(1.04);
+  }
+}
+
+/* Custom scrollbar matching warm theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
