@@ -184,3 +184,31 @@ PaymentsService ──► PaymentGateway Interface ──► MockPaymentGateway
 ```
 * **Development & Test Environment**: Handled deterministically by `MockPaymentGateway`. Supports simulation flags (`simulateResult: 'SUCCESS' | 'FAILED'`) without flaky random timers or network calls.
 * **Production Readiness**: Integrating real processors (Stripe, Razorpay) only requires implementing `PaymentGateway` without touching core domain services or database models.
+
+---
+
+## 6. Booking Lifecycle, Historical Preservation & Inventory Release (Phase 10)
+
+### 6.1 Historical Record Preservation (Zero Deletion Invariant)
+* Cancelled, completed, and expired bookings are **never hard-deleted** from `bookings` or `booking_rooms`.
+* Preserving records guarantees historical auditability for financial reconciliation, guest stay histories, legal compliance, and operational analytics.
+
+### 6.2 Availability Evaluation Logic
+Real-time availability calculations in `AvailabilityService` dynamically determine blocking allocations using status checks:
+```sql
+SELECT room_id FROM booking_rooms br
+JOIN bookings b ON b.id = br.booking_id
+WHERE br.room_id IN (:operationalRoomIds)
+  AND br.status IN ('RESERVED', 'OCCUPIED')
+  AND br.check_in_date < :requestedCheckOut
+  AND br.check_out_date > :requestedCheckIn
+  AND b.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
+  AND (b.hold_expires_at IS NULL OR b.hold_expires_at > CURRENT_TIMESTAMP);
+```
+* **Cancellation**: `br.status` is set to `CANCELLED` and `b.status` to `CANCELLED`. The allocation immediately ceases to match `br.status IN ('RESERVED', 'OCCUPIED')`, freeing inventory for new reservations.
+* **Check-Out / Completion**: `br.status` is set to `RELEASED` and `b.status` to `CHECKED_OUT`. Past dates naturally fall outside search windows, and allocations cease to block future dates.
+* **Physical Room Decoupling**: Physical rooms maintain independent `Room.operationalStatus` (`AVAILABLE`, `MAINTENANCE`, `OUT_OF_SERVICE`). Lifecycle operations never alter `Room.operationalStatus`.
+
+### 6.3 Audit Ledger Integration
+All lifecycle events are recorded in `audit_logs` with actor UUID, action name (`booking.cancelled`, `booking.checked_in`, `booking.checked_out`, `booking.expired`), timestamp, entity UUID, and state changes (`oldValues`, `newValues`).
+

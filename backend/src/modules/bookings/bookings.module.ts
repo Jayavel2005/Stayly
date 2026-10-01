@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BookingsController } from './bookings.controller';
 import { BookingsService } from './bookings.service';
+import { BookingLifecycleService } from './booking-lifecycle.service';
 import { HotelsModule } from '../hotels/hotels.module';
 import { AvailabilityModule } from '../availability/availability.module';
 import { ResourceOwnershipService } from '../../common/authorization/resource-ownership.service';
@@ -8,7 +9,7 @@ import { ResourceOwnershipService } from '../../common/authorization/resource-ow
 @Module({
   imports: [HotelsModule, AvailabilityModule],
   controllers: [BookingsController],
-  providers: [BookingsService, ResourceOwnershipService],
-  exports: [BookingsService],
+  providers: [BookingsService, BookingLifecycleService, ResourceOwnershipService],
+  exports: [BookingsService, BookingLifecycleService],
 })
 export class BookingsModule {}

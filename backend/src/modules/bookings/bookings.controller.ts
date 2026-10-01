@@ -134,11 +134,36 @@ export class BookingsController {
     return this.bookingsService.findBookingById(user, id);
   }
 
+  @Post(':id/cancel')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CUSTOMER, UserRole.HOTEL_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancel Reservation (POST Action)',
+    description:
+      'Cancels an active reservation (PENDING or CONFIRMED), transitions booking status to CANCELLED, ' +
+      'releases allocated physical rooms without deleting historical records, and prevents duplicate cancellations.',
+  })
+  @ApiParam({ name: 'id', description: 'Booking UUID' })
+  @ApiResponse({ status: 200, description: 'Reservation cancelled successfully.' })
+  @ApiResponse({ status: 400, description: 'Invalid state transition, not cancellable, or already cancelled.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized: Missing or invalid token.' })
+  @ApiResponse({ status: 403, description: 'Forbidden: Insufficient privileges.' })
+  @ApiResponse({ status: 404, description: 'Booking not found or access denied (IDOR defense).' })
+  async cancelBookingPost(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto?: CancelBookingDto,
+  ) {
+    return this.bookingsService.cancelBooking(user, id, dto);
+  }
+
   @Patch(':id/cancel')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CUSTOMER, UserRole.HOTEL_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Cancel Reservation',
+    summary: 'Cancel Reservation (PATCH Compatibility)',
     description:
       'Cancels an active reservation (PENDING or CONFIRMED), transitions booking status to CANCELLED, ' +
       'and atomically releases allocated physical rooms back to the available inventory pool.',
@@ -151,9 +176,57 @@ export class BookingsController {
   async cancelBooking(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: CancelBookingDto,
+    @Body() dto?: CancelBookingDto,
   ) {
     return this.bookingsService.cancelBooking(user, id, dto);
+  }
+
+  @Post(':id/check-in')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.HOTEL_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Operational Check-In',
+    description:
+      'Performs operational guest check-in for a CONFIRMED reservation. ' +
+      'Transitions status to CHECKED_IN, records check-in timestamp, ' +
+      'marks physical rooms as OCCUPIED, and records audit history.',
+  })
+  @ApiParam({ name: 'id', description: 'Booking UUID' })
+  @ApiResponse({ status: 200, description: 'Guest checked in successfully.' })
+  @ApiResponse({ status: 400, description: 'Booking not check-in eligible (must be CONFIRMED, not expired/cancelled).' })
+  @ApiResponse({ status: 401, description: 'Unauthorized: Missing or invalid token.' })
+  @ApiResponse({ status: 403, description: 'Forbidden: Caller not assigned to property.' })
+  @ApiResponse({ status: 404, description: 'Booking not found.' })
+  async checkIn(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.bookingsService.checkInBooking(user, id);
+  }
+
+  @Post(':id/check-out')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.HOTEL_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Operational Check-Out',
+    description:
+      'Performs operational guest check-out for an active CHECKED_IN reservation. ' +
+      'Transitions status to CHECKED_OUT, records check-out timestamp, ' +
+      'marks physical room allocations as RELEASED, and records audit history.',
+  })
+  @ApiParam({ name: 'id', description: 'Booking UUID' })
+  @ApiResponse({ status: 200, description: 'Guest checked out successfully.' })
+  @ApiResponse({ status: 400, description: 'Booking not check-out eligible (must be CHECKED_IN).' })
+  @ApiResponse({ status: 401, description: 'Unauthorized: Missing or invalid token.' })
+  @ApiResponse({ status: 403, description: 'Forbidden: Caller not assigned to property.' })
+  @ApiResponse({ status: 404, description: 'Booking not found.' })
+  async checkOut(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.bookingsService.checkOutBooking(user, id);
   }
 
   @Patch(':id/status')
@@ -180,3 +253,4 @@ export class BookingsController {
     return this.bookingsService.updateBookingStatus(user, id, dto.status);
   }
 }
+

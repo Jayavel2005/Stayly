@@ -273,6 +273,15 @@ export class PaymentsService {
 
         const lockedBooking = lockedBookings[0];
         if (lockedBooking.status === BookingStatus.CONFIRMED) {
+          const existingTxAttempt = await tx.paymentAttempt.findUnique({
+            where: { idempotencyKey: trimmedKey },
+          });
+          if (existingTxAttempt) {
+            const currentPayment = await tx.payment.findUnique({
+              where: { bookingId: booking.id },
+            });
+            return { payment: currentPayment, attempt: existingTxAttempt, isReplay: true };
+          }
           throw new DomainException(
             'PAYMENT_ALREADY_COMPLETED',
             'This booking has already been successfully paid.',

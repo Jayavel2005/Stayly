@@ -560,5 +560,130 @@ Physical room inventory endpoints are restricted to property management (`HOTEL_
   - `ADMIN`: Platform-wide ledger with optional `bookingId` filter and pagination.
   - `HOTEL_MANAGER`: Receives `403 FORBIDDEN`.
 
+---
+
+## 10. Booking Lifecycle & Cancellation Endpoints (Phase 10)
+
+### 10.1 Cancel Reservation
+* **Primary Endpoint:** `POST /api/v1/bookings/:id/cancel`
+* **Legacy/Compatibility Endpoint:** `PATCH /api/v1/bookings/:id/cancel`
+* **Access:**
+  - `CUSTOMER`: May cancel own active reservation (`PENDING` or `CONFIRMED`). Attempting to cancel another customer's reservation returns `404 NOT_FOUND` (IDOR defense).
+  - `HOTEL_MANAGER`: May cancel reservations for assigned properties. Unassigned properties return `404 NOT_FOUND`.
+  - `ADMIN`: Global cancellation authority.
+* **Request Body (Optional):**
+  ```json
+  {
+    "reason": "Change of travel plans"
+  }
+  ```
+* **State Transition Rules:**
+  - Permitted from: `PENDING`, `CONFIRMED`.
+  - Forbidden from: `CHECKED_IN` (`400 BOOKING_NOT_CANCELLABLE`), `CHECKED_OUT` (`400 INVALID_STATE_TRANSITION`), `EXPIRED` (`400 INVALID_STATE_TRANSITION`).
+  - Already cancelled: `400 BOOKING_ALREADY_CANCELLED`.
+* **Side Effects & Invariants:**
+  - Booking status updated to `CANCELLED` and `cancelled_at` / `cancellation_reason` recorded.
+  - All allocated physical room records in `booking_rooms` transition to `CANCELLED`.
+  - **No Records Deleted**: Reservation and allocations remain in the database permanently for historical auditing.
+  - **Availability Released**: Real-time availability queries immediately ignore `CANCELLED` allocations.
+  - **Payment Consistency**: Paid reservations preserve the `Payment` record as `SUCCEEDED`. Real refund provider processing is deferred to a dedicated refund phase; no fake refunds are created.
+  - **Audit Logging**: Recorded in `audit_logs` with action `booking.cancelled`.
+* **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "10594466-e472-4e5b-887f-1e624e255292",
+      "bookingReference": "STY-202610-A1B2C3",
+      "status": "CANCELLED",
+      "checkIn": "2026-11-01",
+      "checkOut": "2026-11-04",
+      "totalNights": 3,
+      "totalGuests": 2,
+      "roomsCount": 1,
+      "totalAmount": "15000.00",
+      "currency": "INR",
+      "cancelledAt": "2026-10-01T17:30:00.000Z",
+      "cancellationReason": "Change of travel plans",
+      "message": "Booking cancelled successfully."
+    }
+  }
+  ```
+
+### 10.2 Operational Check-In
+* **Endpoint:** `POST /api/v1/bookings/:id/check-in`
+* **Access:** Authenticated `HOTEL_MANAGER` (assigned to hotel) or `ADMIN`.
+* **Customer Isolation:** Customers receive `403 FORBIDDEN`.
+* **State Transition Rules:**
+  - Permitted strictly from: `CONFIRMED`.
+  - Rejection from `PENDING`: `400 BOOKING_NOT_CHECKINABLE` (must be paid and confirmed first).
+  - Rejection from `CANCELLED`, `EXPIRED`, `CHECKED_OUT`: `400 BOOKING_NOT_CHECKINABLE`.
+  - Repeated Check-In: `400 BOOKING_ALREADY_CHECKED_IN` (idempotent side-effect protection).
+* **Stay Period Date Rule:**
+  - Check-in is allowed on or after reservation start date (`[checkInDate, checkOutDate)`).
+  - Check-in is rejected if the scheduled checkout date has already passed (`now >= checkOutDate`).
+* **Side Effects & Invariants:**
+  - Booking status updated to `CHECKED_IN` and `checked_in_at` timestamp recorded.
+  - Allocated room status in `booking_rooms` transitions to `OCCUPIED`.
+  - Physical room `operationalStatus` is preserved (not mutated).
+  - Audit record created with action `booking.checked_in`.
+* **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "10594466-e472-4e5b-887f-1e624e255292",
+      "bookingReference": "STY-202610-A1B2C3",
+      "status": "CHECKED_IN",
+      "checkedInAt": "2026-11-01T14:05:00.000Z",
+      "message": "Booking checked in successfully."
+    }
+  }
+  ```
+
+### 10.3 Operational Check-Out
+* **Endpoint:** `POST /api/v1/bookings/:id/check-out`
+* **Access:** Authenticated `HOTEL_MANAGER` (assigned to hotel) or `ADMIN`.
+* **Customer Isolation:** Customers receive `403 FORBIDDEN`.
+* **State Transition Rules:**
+  - Permitted strictly from: `CHECKED_IN`.
+  - Rejection from `CONFIRMED`, `PENDING`, `CANCELLED`: `400 BOOKING_NOT_CHECKOUTABLE`.
+  - Repeated Check-Out: `400 BOOKING_ALREADY_COMPLETED`.
+* **Side Effects & Invariants:**
+  - Booking status updated to `CHECKED_OUT` (completed) and `checked_out_at` timestamp recorded.
+  - Allocated room status in `booking_rooms` transitions to `RELEASED`.
+  - Historical allocations are preserved and do NOT block future availability searches.
+  - Audit record created with action `booking.checked_out`.
+* **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "10594466-e472-4e5b-887f-1e624e255292",
+      "bookingReference": "STY-202610-A1B2C3",
+      "status": "CHECKED_OUT",
+      "checkedOutAt": "2026-11-04T10:30:00.000Z",
+      "message": "Booking checked out successfully."
+    }
+  }
+  ```
+
+### 10.4 State Machine Transition (General Handler)
+* **Endpoint:** `PATCH /api/v1/bookings/:id/status`
+* **Access:** Authenticated `HOTEL_MANAGER` (assigned to hotel) or `ADMIN`.
+* **Body:**
+  ```json
+  {
+    "status": "CONFIRMED"
+  }
+  ```
+* **Supported Transitions:**
+  - `PENDING -> CONFIRMED` (Manual staff confirmation)
+  - `CONFIRMED -> CHECKED_IN` (Delegates to check-in)
+  - `CHECKED_IN -> CHECKED_OUT` (Delegates to check-out)
+  - `CONFIRMED -> CANCELLED` (Delegates to cancellation)
+  - `CONFIRMED -> NO_SHOW` (Releases rooms to `RELEASED`)
+
+
 
 

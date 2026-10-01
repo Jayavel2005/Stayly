@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import { HotelAuthorizationService } from '../hotels/authorization/hotel-authorization.service';
 import { AvailabilityService } from '../availability/availability.service';
+import { BookingLifecycleService } from './booking-lifecycle.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { QueryBookingsDto } from './dto/query-bookings.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
@@ -23,6 +24,7 @@ export class BookingsService {
     private readonly prisma: PrismaService,
     private readonly hotelAuthorizationService: HotelAuthorizationService,
     private readonly availabilityService: AvailabilityService,
+    private readonly lifecycleService: BookingLifecycleService,
   ) {}
 
   /**
@@ -537,301 +539,46 @@ export class BookingsService {
     bookingId: string,
     dto?: CancelBookingDto,
   ): Promise<BookingResponse> {
-    const booking = await this.prisma.booking.findUnique({
-      where: { id: bookingId },
-    });
+    return this.lifecycleService.cancelBooking(user, bookingId, dto?.reason);
+  }
 
-    if (!booking) {
-      throw new DomainException(
-        'BOOKING_NOT_FOUND',
-        'Reservation record not found.',
-        HttpStatus.NOT_FOUND,
-      );
-    }
+  /**
+   * Check in a guest for a confirmed reservation (Manager or Admin).
+   */
+  async checkInBooking(
+    user: AuthenticatedUser,
+    bookingId: string,
+  ): Promise<BookingResponse> {
+    return this.lifecycleService.checkInBooking(user, bookingId);
+  }
 
-    // Authorization
-    if (user.role === UserRole.CUSTOMER) {
-      if (booking.customerId !== user.id) {
-        throw new DomainException(
-          'BOOKING_NOT_FOUND',
-          'Reservation record not found.',
-          HttpStatus.NOT_FOUND,
-        );
-      }
-    } else if (
-      user.role === UserRole.HOTEL_MANAGER ||
-      user.role === 'MANAGER'
-    ) {
-      await this.hotelAuthorizationService.assertManagerAccess(
-        user.id,
-        booking.hotelId,
-        { hideExistence: true },
-      );
-    }
-
-    // State machine check: cannot cancel already terminal states
-    if (booking.status === BookingStatus.CANCELLED) {
-      throw new DomainException(
-        'BOOKING_ALREADY_CANCELLED',
-        'This reservation is already cancelled.',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    if (
-      booking.status === BookingStatus.CHECKED_OUT ||
-      booking.status === BookingStatus.EXPIRED ||
-      booking.status === BookingStatus.NO_SHOW
-    ) {
-      throw new DomainException(
-        'INVALID_STATE_TRANSITION',
-        `Completed or expired bookings cannot be cancelled (current status: ${booking.status}).`,
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    // Transactional status update and inventory release
-    const updatedBooking = await this.prisma.$transaction(async (tx) => {
-      // 1. Mark booking CANCELLED
-      const updated = await tx.booking.update({
-        where: { id: bookingId },
-        data: {
-          status: BookingStatus.CANCELLED,
-          cancelledAt: new Date(),
-          cancellationReason: dto?.reason || 'Cancelled by user',
-        },
-        include: {
-          hotel: {
-            select: { id: true, name: true, slug: true, city: true },
-          },
-          bookingRooms: {
-            include: {
-              room: { select: { id: true, roomNumber: true, floor: true } },
-              roomType: { select: { id: true, name: true, slug: true } },
-            },
-          },
-          priceSnapshot: true,
-        },
-      });
-
-      // 2. Release allocated rooms in booking_rooms
-      await tx.bookingRoom.updateMany({
-        where: { bookingId },
-        data: { status: BookingRoomStatus.CANCELLED },
-      });
-
-      return updated;
-    });
-
-    return this.mapToBookingResponse(updatedBooking);
+  /**
+   * Check out a guest for a checked-in reservation (Manager or Admin).
+   */
+  async checkOutBooking(
+    user: AuthenticatedUser,
+    bookingId: string,
+  ): Promise<BookingResponse> {
+    return this.lifecycleService.checkOutBooking(user, bookingId);
   }
 
   /**
    * Update booking lifecycle state (HOTEL_MANAGER or ADMIN).
-   * Enforces the domain state machine.
+   * Enforces the centralized domain state machine.
    */
   async updateBookingStatus(
     user: AuthenticatedUser,
     bookingId: string,
     targetStatus: BookingStatus,
   ): Promise<BookingResponse> {
-    const booking = await this.prisma.booking.findUnique({
-      where: { id: bookingId },
-    });
-
-    if (!booking) {
-      throw new DomainException(
-        'BOOKING_NOT_FOUND',
-        'Reservation record not found.',
-        HttpStatus.NOT_FOUND,
-      );
-    }
-
-    // Authorization
-    if (
-      user.role === UserRole.HOTEL_MANAGER ||
-      user.role === 'MANAGER'
-    ) {
-      await this.hotelAuthorizationService.assertManagerAccess(
-        user.id,
-        booking.hotelId,
-        { hideExistence: true },
-      );
-    } else if (user.role !== UserRole.ADMIN) {
-      throw new DomainException(
-        'FORBIDDEN',
-        'You do not have permission to update reservation lifecycle status.',
-        HttpStatus.FORBIDDEN,
-      );
-    }
-
-    // State machine transition validation
-    const currentStatus = booking.status as BookingStatus;
-    const allowedTransitions: Record<BookingStatus, BookingStatus[]> = {
-      [BookingStatus.PENDING]: [
-        BookingStatus.CONFIRMED,
-        BookingStatus.CANCELLED,
-        BookingStatus.EXPIRED,
-      ],
-      [BookingStatus.CONFIRMED]: [
-        BookingStatus.CHECKED_IN,
-        BookingStatus.CANCELLED,
-        BookingStatus.NO_SHOW,
-      ],
-      [BookingStatus.CHECKED_IN]: [BookingStatus.CHECKED_OUT],
-      [BookingStatus.CHECKED_OUT]: [],
-      [BookingStatus.CANCELLED]: [],
-      [BookingStatus.EXPIRED]: [],
-      [BookingStatus.NO_SHOW]: [],
-    };
-
-    const validTargets = allowedTransitions[currentStatus] || [];
-    if (!validTargets.includes(targetStatus)) {
-      throw new DomainException(
-        'INVALID_STATE_TRANSITION',
-        `Cannot transition reservation from ${currentStatus} to ${targetStatus}.`,
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    const updatedBooking = await this.prisma.$transaction(async (tx) => {
-      const updateData: any = { status: targetStatus };
-
-      if (targetStatus === BookingStatus.CHECKED_IN) {
-        updateData.checkedInAt = new Date();
-      } else if (targetStatus === BookingStatus.CHECKED_OUT) {
-        updateData.checkedOutAt = new Date();
-      } else if (targetStatus === BookingStatus.CANCELLED) {
-        updateData.cancelledAt = new Date();
-      }
-
-      const updated = await tx.booking.update({
-        where: { id: bookingId },
-        data: updateData,
-        include: {
-          hotel: {
-            select: { id: true, name: true, slug: true, city: true },
-          },
-          bookingRooms: {
-            include: {
-              room: { select: { id: true, roomNumber: true, floor: true } },
-              roomType: { select: { id: true, name: true, slug: true } },
-            },
-          },
-          priceSnapshot: true,
-        },
-      });
-
-      // Synchronize booking_rooms allocation status
-      let roomAllocationStatus: BookingRoomStatus | null = null;
-      if (targetStatus === BookingStatus.CHECKED_IN) {
-        roomAllocationStatus = BookingRoomStatus.OCCUPIED;
-      } else if (targetStatus === BookingStatus.CHECKED_OUT) {
-        roomAllocationStatus = BookingRoomStatus.RELEASED;
-      } else if (
-        targetStatus === BookingStatus.CANCELLED ||
-        targetStatus === BookingStatus.EXPIRED
-      ) {
-        roomAllocationStatus = BookingRoomStatus.CANCELLED;
-      }
-
-      if (roomAllocationStatus) {
-        await tx.bookingRoom.updateMany({
-          where: { bookingId },
-          data: { status: roomAllocationStatus },
-        });
-      }
-
-      return updated;
-    });
-
-    return this.mapToBookingResponse(updatedBooking);
+    return this.lifecycleService.updateBookingStatus(user, bookingId, targetStatus);
   }
 
   /**
    * Helper to map raw Prisma booking records to client-safe BookingResponse DTOs.
    */
   private mapToBookingResponse(booking: any): BookingResponse {
-    const firstRoomType = booking.bookingRooms?.[0]?.roomType;
-    const allocatedRooms = (booking.bookingRooms || []).map((br: any) => ({
-      id: br.room?.id || br.roomId,
-      roomNumber: br.room?.roomNumber || 'Unknown',
-      floor: br.room?.floor || 0,
-    }));
-
-    let priceSnapshot: any = undefined;
-    if (booking.priceSnapshot) {
-      const ps = booking.priceSnapshot;
-      priceSnapshot = {
-        baseRate: (Number(ps.baseRateCents) / 100).toFixed(2),
-        baseRateCents: ps.baseRateCents.toString(),
-        totalNights: ps.totalNights,
-        grossAmount: (Number(ps.grossRoomCents) / 100).toFixed(2),
-        grossRoomCents: ps.grossRoomCents.toString(),
-        taxAmount: (Number(ps.taxCents) / 100).toFixed(2),
-        taxCents: ps.taxCents.toString(),
-        serviceFeeAmount: (Number(ps.serviceFeeCents) / 100).toFixed(2),
-        serviceFeeCents: ps.serviceFeeCents.toString(),
-        discountAmount: (Number(ps.discountCents) / 100).toFixed(2),
-        discountCents: ps.discountCents.toString(),
-        netAmount: (Number(ps.netAmountCents) / 100).toFixed(2),
-        netAmountCents: ps.netAmountCents.toString(),
-        currency: ps.currency,
-      };
-    }
-
-    return {
-      id: booking.id,
-      bookingReference: booking.bookingReference,
-      status: booking.status,
-      checkIn: booking.checkInDate.toISOString().split('T')[0],
-      checkOut: booking.checkOutDate.toISOString().split('T')[0],
-      totalNights: booking.totalNights,
-      totalGuests: booking.totalGuests,
-      roomsCount: booking.bookingRooms?.length || 1,
-      totalAmount: (Number(booking.totalAmountCents) / 100).toFixed(2),
-      totalAmountCents: booking.totalAmountCents.toString(),
-      currency: booking.currency,
-      holdExpiresAt: booking.holdExpiresAt
-        ? booking.holdExpiresAt.toISOString()
-        : null,
-      cancellationReason: booking.cancellationReason,
-      cancelledAt: booking.cancelledAt
-        ? booking.cancelledAt.toISOString()
-        : null,
-      checkedInAt: booking.checkedInAt
-        ? booking.checkedInAt.toISOString()
-        : null,
-      checkedOutAt: booking.checkedOutAt
-        ? booking.checkedOutAt.toISOString()
-        : null,
-      createdAt: booking.createdAt.toISOString(),
-      updatedAt: booking.updatedAt.toISOString(),
-      hotel: {
-        id: booking.hotel.id,
-        name: booking.hotel.name,
-        slug: booking.hotel.slug,
-        city: booking.hotel.city,
-      },
-      roomType: {
-        id: firstRoomType?.id || booking.bookingRooms?.[0]?.roomTypeId,
-        name: firstRoomType?.name || 'Standard Room',
-        slug: firstRoomType?.slug || 'standard-room',
-      },
-      allocatedRooms,
-      priceSnapshot,
-      ...(booking.customer
-        ? {
-            customer: {
-              id: booking.customer.id,
-              firstName: booking.customer.firstName,
-              lastName: booking.customer.lastName,
-              email: booking.customer.email,
-              phone: booking.customer.phone,
-            },
-          }
-        : {}),
-    };
+    return this.lifecycleService.mapToBookingResponse(booking);
   }
 
   /**

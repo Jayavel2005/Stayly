@@ -1,5 +1,6 @@
 export * from './bookings.module';
 export * from './bookings.service';
+export * from './booking-lifecycle.service';
 export * from './bookings.controller';
 export * from './dto/create-booking.dto';
 export * from './dto/query-bookings.dto';

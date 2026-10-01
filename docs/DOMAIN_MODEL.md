@@ -434,5 +434,90 @@ MockPaymentGateway (Deterministic testing simulator)
   - `Payment` → `FAILED`
   - `Booking` remains `PENDING` (allowing retry before temporary reservation hold expires).
 
+---
+
+## 12. Booking Lifecycle State Machine & Cancellation (Phase 10)
+
+### 12.1 Authoritative Booking State Machine
+
+Stayora enforces a centralized, authoritative domain state machine implemented in `BookingLifecycleService`:
+
+```text
+                  ┌──────────────┐
+                  │   PENDING    │
+                  └──────┬───────┘
+            ┌────────────┼────────────┐
+            │            │            │
+            ▼            ▼            ▼
+      ┌───────────┐┌───────────┐┌───────────┐
+      │ CONFIRMED ││ CANCELLED ││  EXPIRED  │
+      └─────┬─────┘└───────────┘└───────────┘
+      ┌─────┴─────┐
+      │           │
+      ▼           ▼
+┌───────────┐┌───────────┐
+│CHECKED_IN ││  NO_SHOW  │
+└─────┬─────┘└───────────┘
+      │
+      ▼
+┌───────────┐
+│CHECKED_OUT│
+└───────────┘
+```
+
+#### Valid Transitions
+| Initial State | Target State | Trigger / Actor | Operational Rules |
+| :--- | :--- | :--- | :--- |
+| `PENDING` | `CONFIRMED` | Gateway / Manager / Admin | Payment `SUCCEEDED` or manual staff verification. |
+| `PENDING` | `CANCELLED` | Customer / Manager / Admin | Customer cancels unpaid hold or staff operational release. |
+| `PENDING` | `EXPIRED` | System / Cron Scheduler | Hold window (`holdExpiresAt < now`) elapsed. |
+| `CONFIRMED` | `CHECKED_IN` | Assigned Manager / Admin | Guest arrival; marks room `OCCUPIED`. |
+| `CONFIRMED` | `CANCELLED` | Customer / Assigned Manager / Admin | Customer cancellation; marks room `CANCELLED`. |
+| `CONFIRMED` | `NO_SHOW` | Assigned Manager / Admin | Guest failed to arrive; marks room `RELEASED`. |
+| `CHECKED_IN` | `CHECKED_OUT` | Assigned Manager / Admin | Guest departure; marks room `RELEASED`. |
+
+#### Terminal States
+`CHECKED_OUT`, `CANCELLED`, `EXPIRED`, and `NO_SHOW` are terminal states. No subsequent state transitions are permitted; invalid transitions reject with `400 BAD_REQUEST` (`INVALID_STATE_TRANSITION`).
+
+### 12.2 Physical Room Inventory Semantics & Historical Preservation
+* **Decoupling Operational Status from Booking Occupancy**: Physical rooms (`Room.operationalStatus`) represent physical readiness (`AVAILABLE`, `MAINTENANCE`, `OUT_OF_SERVICE`). Booking lifecycle actions **never** mutate `Room.operationalStatus`.
+* **Allocation Status Lifecycle (`booking_rooms.status`)**:
+  - `RESERVED`: Initial hold and confirmed state (`PENDING`, `CONFIRMED`). Blocks date-range availability.
+  - `OCCUPIED`: Guest physically checked in (`CHECKED_IN`). Blocks date-range availability.
+  - `RELEASED`: Guest checked out (`CHECKED_OUT`) or marked `NO_SHOW`. Allocation ceases to block future dates.
+  - `CANCELLED`: Reservation cancelled or expired (`CANCELLED`, `EXPIRED`). Allocation ceases to block future dates.
+* **Critical Invariant**:
+  > **Cancelled and completed bookings are NEVER deleted from the database.**  
+  > Historical allocations, price snapshots, and payment records remain permanently for accounting, reporting, and audit trails. Real-time availability queries simply filter out non-blocking statuses (`CANCELLED`, `RELEASED`, `EXPIRED`).
+
+### 12.3 Cancellation Rules & Payment Invariants
+* **Customer Ownership Enforcement (IDOR Defense)**: Customers may cancel only reservations where `booking.customerId === user.id`. Cross-customer cancellation attempts return `404 NOT_FOUND` to avoid resource existence disclosure.
+* **Manager Isolation**: Hotel managers may cancel reservations only for properties explicitly assigned in `hotel_managers`.
+* **State Check**: Once a guest has checked in (`CHECKED_IN`) or completed their stay (`CHECKED_OUT`), cancellation is prohibited (`BOOKING_NOT_CANCELLABLE` / `INVALID_STATE_TRANSITION`).
+* **Payment Consistency & Deferred Refund Policy**:
+  - Cancelling a paid booking transitions `Booking.status` to `CANCELLED`.
+  - The associated `Payment` record remains strictly historically accurate with status `SUCCEEDED`.
+  - **No Fake Refund Created**: Refund processing is explicitly deferred to a dedicated payment/refund phase. Money is not marked as refunded until real gateway settlement occurs.
+
+### 12.4 Operational Check-In & Check-Out Rules
+* **Check-In Authorization**: Restricted to assigned `HOTEL_MANAGER` or `ADMIN`. Customers receive `403 FORBIDDEN`.
+* **Eligibility**: The reservation must be in `CONFIRMED` state. Unconfirmed (`PENDING`), cancelled, or expired reservations reject with `400 BOOKING_NOT_CHECKINABLE`.
+* **Date Semantics**: Reservation dates use half-open interval `[checkInDate, checkOutDate)`. Check-in is allowed on or after `checkInDate`, but rejected if the scheduled checkout date has passed (`now >= checkOutDate`).
+* **Check-Out**: Restricted to assigned `HOTEL_MANAGER` or `ADMIN`. The reservation must be in `CHECKED_IN` state. Transitions to `CHECKED_OUT`, marks allocations `RELEASED`, and timestamps `checkedOutAt`.
+
+### 12.5 Hold Expiration & Background Integration
+* `BookingLifecycleService.expireBooking(bookingId)` transitions eligible `PENDING` bookings to `EXPIRED` and marks allocated rooms `CANCELLED`.
+* `BookingLifecycleService.expireStalePendingBookings()` scans for `holdExpiresAt < now` and bulk expires them.
+* **Scheduled Task Integration Point**: Designed for scheduled execution (NestJS `@Cron` or BullMQ background workers in future phases) without introducing external infrastructure in Phase 10.
+
+### 12.6 Concurrency Protection & Audit Ledger
+* **Pessimistic Locking**: Every lifecycle transition locks the target booking row (`SELECT ... FOR UPDATE`) inside an atomic database transaction (`PrismaService.$transaction`).
+* **Audit Trail**: Every lifecycle mutation automatically records an entry in `audit_logs`:
+  - `booking.cancelled`
+  - `booking.checked_in`
+  - `booking.checked_out`
+  - `booking.expired`
+
+
 
 

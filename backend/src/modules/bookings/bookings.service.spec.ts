@@ -3,6 +3,7 @@ import { BookingsService } from './bookings.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HotelAuthorizationService } from '../hotels/authorization/hotel-authorization.service';
 import { AvailabilityService } from '../availability/availability.service';
+import { BookingLifecycleService } from './booking-lifecycle.service';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import { BookingStatus, BookingRoomStatus } from './types/booking-status.enum';
 import { UserRole } from '../auth/types/user-role.enum';
@@ -23,6 +24,7 @@ describe('BookingsService Unit Tests', () => {
   beforeEach(async () => {
     prisma = {
       $transaction: jest.fn(),
+      $queryRaw: jest.fn().mockResolvedValue([{ id: mockBookingId, status: BookingStatus.CONFIRMED }]),
       booking: {
         findUnique: jest.fn(),
         findMany: jest.fn(),
@@ -32,6 +34,9 @@ describe('BookingsService Unit Tests', () => {
       },
       bookingRoom: {
         updateMany: jest.fn(),
+      },
+      auditLog: {
+        create: jest.fn(),
       },
     };
 
@@ -51,6 +56,7 @@ describe('BookingsService Unit Tests', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BookingsService,
+        BookingLifecycleService,
         { provide: PrismaService, useValue: prisma },
         { provide: HotelAuthorizationService, useValue: hotelAuthService },
         { provide: AvailabilityService, useValue: availabilityService },
@@ -431,8 +437,10 @@ describe('BookingsService Unit Tests', () => {
 
       prisma.$transaction.mockImplementation(async (callback: any) => {
         const tx = {
+          $queryRaw: jest.fn().mockResolvedValue([{ id: mockBookingId, status: BookingStatus.CONFIRMED }]),
           booking: { update: jest.fn().mockResolvedValue(updatedBooking) },
           bookingRoom: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          auditLog: { create: jest.fn().mockResolvedValue({}) },
         };
         return callback(tx);
       });
@@ -538,8 +546,10 @@ describe('BookingsService Unit Tests', () => {
 
       prisma.$transaction.mockImplementation(async (callback: any) => {
         const tx = {
+          $queryRaw: jest.fn().mockResolvedValue([{ id: mockBookingId, status: BookingStatus.CONFIRMED }]),
           booking: { update: jest.fn().mockResolvedValue(updatedBooking) },
           bookingRoom: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          auditLog: { create: jest.fn().mockResolvedValue({}) },
         };
         return callback(tx);
       });

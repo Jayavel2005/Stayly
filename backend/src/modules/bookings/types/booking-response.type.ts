@@ -64,6 +64,7 @@ export interface BookingResponse {
   allocatedRooms: BookingAllocatedRoom[];
   priceSnapshot?: BookingPriceSnapshotResponse;
   customer?: BookingCustomerResponse;
+  message?: string;
 }
 
 export interface PaginatedBookingsResponse {
