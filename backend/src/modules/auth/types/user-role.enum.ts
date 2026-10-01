@@ -1,0 +1,11 @@
+export enum UserRole {
+  CUSTOMER = 'CUSTOMER',
+  HOTEL_MANAGER = 'HOTEL_MANAGER',
+  ADMIN = 'ADMIN',
+}
+
+export enum UserStatus {
+  ACTIVE = 'ACTIVE',
+  SUSPENDED = 'SUSPENDED',
+  PENDING_VERIFICATION = 'PENDING_VERIFICATION',
+}
