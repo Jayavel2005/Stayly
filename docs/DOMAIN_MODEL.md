@@ -304,3 +304,63 @@ This maps directly to an indexed PostgreSQL `NOT EXISTS` subquery, avoiding $N+1
 - **Search (`Phase 7`):** Customer discovery read-path. Answers *"Which rooms are currently unoccupied for these dates?"* It does not mutate inventory or guarantee that inventory will remain vacant.
 - **Booking Engine (`Phase 8`):** Customer reservation write-path. Must perform atomic availability checks and hold acquisition within a PostgreSQL transaction with explicit row-level locking (`FOR UPDATE`) or serializable isolation.
 
+---
+
+## 10. Reservations, Booking Engine & Concurrency (Phase 8)
+
+### 10.1 The Booking Creation Transaction Pipeline
+The booking engine safely converts a customer search intent into an authoritative reservation folio:
+```text
+BEGIN TRANSACTION
+  ├── 1. Re-validate Hotel & RoomType active status
+  ├── 2. Verify RoomType.hotelId === requestedHotelId
+  ├── 3. Enforce guest capacity (RoomType.maxOccupancy >= guests)
+  ├── 4. Lock candidate operational physical rooms:
+  │      SELECT id, room_number FROM rooms
+  │      WHERE room_type_id = $roomTypeId AND operational_status = 'AVAILABLE'
+  │      ORDER BY room_number ASC FOR UPDATE
+  ├── 5. Query conflicting overlapping allocations:
+  │      SELECT room_id FROM booking_rooms
+  │      WHERE room_id = ANY($candidateRoomIds)
+  │        AND status IN ('RESERVED', 'OCCUPIED')
+  │        AND check_in_date < $checkOutDate AND check_out_date > $checkInDate
+  │        AND booking.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
+  ├── 6. Verify sufficient available units (available >= requestedRooms); throw 409 if not
+  ├── 7. Calculate exact gross, tax, and net amounts using integer cents (BigInt)
+  ├── 8. Generate unique reference: STY-YYYYMM-XXXXXX
+  ├── 9. Persist Booking (status: PENDING, holdExpiresAt: NOW() + 15m)
+  ├── 10. Persist BookingRoom allocation records (status: RESERVED)
+  └── 11. Persist BookingPriceSnapshot record (freezing rate historical data)
+COMMIT
+```
+
+### 10.2 Concurrency & Double-Booking Protection
+1. **Pessimistic Row-Level Locking:** Deterministic ordering (`ORDER BY room_number ASC FOR UPDATE`) prevents deadlocks and serializes concurrent allocation requests across identical room categories.
+2. **PostgreSQL GiST Exclusion Constraint (`exclude_overlapping_room_allocations`):**
+   ```sql
+   EXCLUDE USING gist (
+       "room_id" WITH =,
+       daterange("check_in_date", "check_out_date", '[)') WITH &&
+   )
+   WHERE ("status" IN ('RESERVED', 'OCCUPIED'));
+   ```
+   Guarantees zero physical room double-booking at the storage engine level under all concurrent scenarios.
+
+### 10.3 Historical Price Snapshotting
+To insulate completed and in-flight reservations from subsequent hotel price increases or inflation, rates are frozen in `booking_price_snapshots`:
+- `base_rate_cents`: RoomType rate at time of booking.
+- `gross_room_cents`: `base_rate_cents * totalNights * roomsCount`.
+- `net_amount_cents`: Total invoice folio payable.
+- Zero floating-point drift (`BigInt` minor currency units / paise).
+
+### 10.4 State Machine & Lifecycle Transitions
+```text
+PENDING (15m hold) ──► CONFIRMED (paid) ──► CHECKED_IN (arrival) ──► CHECKED_OUT (departure)
+      │                       │
+      ├──► CANCELLED          └──► CANCELLED
+      └──► EXPIRED
+```
+- Active inventory holding states: `PENDING` (while `holdExpiresAt > NOW()`), `CONFIRMED`, `CHECKED_IN`.
+- Terminal / released inventory states: `CANCELLED`, `CHECKED_OUT`, `EXPIRED`, `NO_SHOW`.
+
+

@@ -377,3 +377,105 @@ Physical room inventory endpoints are restricted to property management (`HOTEL_
 * **Search is a Read Operation:** Search results reflect instantaneous inventory state and do **NOT** lock or reserve inventory.
 * **Atomic Booking Reservation:** Phase 8 Booking Engine must independently perform transactional availability validation with database row locking (`SELECT FOR UPDATE` / serializable transaction).
 
+---
+
+## 8. Reservations & Booking Engine (Phase 8)
+
+### 8.1 Create Reservation & Allocate Inventory
+* **Endpoint:** `POST /api/v1/bookings`
+* **Access:** Authenticated (`CUSTOMER` only via JWT)
+* **Payload:**
+  ```json
+  {
+    "hotelId": "44444444-4444-4444-8444-444444444444",
+    "roomTypeId": "57391b9b-ed2d-4e3d-bb09-63728b53254f",
+    "checkIn": "2026-10-20",
+    "checkOut": "2026-10-23",
+    "guests": 2,
+    "rooms": 1
+  }
+  ```
+* **Transactional Invariants:**
+  1. **Authoritative Re-check:** Availability from Phase 7 search is non-authoritative. The booking engine executes an authoritative availability re-check inside an explicit PostgreSQL transaction (`$transaction`).
+  2. **Pessimistic Row-Level Locking:** Physical operational rooms (`operationalStatus = AVAILABLE`) are locked in deterministic order (`ORDER BY room_number ASC FOR UPDATE`), preventing concurrent race conditions.
+  3. **Double-Booking Defense:** PostgreSQL native GiST exclusion constraint (`exclude_overlapping_room_allocations`) guarantees zero overlapping active reservations at the database engine level.
+  4. **Automatic Physical Allocation:** Customers book a room category; the engine selects and links specific brick-and-mortar units in `booking_rooms`.
+  5. **Price Snapshot:** Freezes historical rates (`base_rate_cents`, `gross_room_cents`, `net_amount_cents`) in `booking_price_snapshots` using exact integer cents.
+  6. **Inventory Hold Window:** Initial status is `PENDING` with `holdExpiresAt = NOW() + 15 minutes`.
+* **Response (`201 Created`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "11111111-2222-3333-4444-555555555555",
+      "bookingReference": "STY-202610-K8J2P9",
+      "status": "PENDING",
+      "checkIn": "2026-10-20",
+      "checkOut": "2026-10-23",
+      "totalNights": 3,
+      "totalGuests": 2,
+      "roomsCount": 1,
+      "totalAmount": "13500.00",
+      "totalAmountCents": "1350000",
+      "currency": "INR",
+      "holdExpiresAt": "2026-10-20T12:15:00.000Z",
+      "hotel": {
+        "id": "44444444-4444-4444-8444-444444444444",
+        "name": "Stayora Grand Palace",
+        "slug": "stayora-grand-palace",
+        "city": "Mumbai"
+      },
+      "roomType": {
+        "id": "57391b9b-ed2d-4e3d-bb09-63728b53254f",
+        "name": "Classic Heritage Room",
+        "slug": "classic-heritage-room"
+      },
+      "allocatedRooms": [
+        { "id": "...", "roomNumber": "101", "floor": 1 }
+      ],
+      "priceSnapshot": {
+        "baseRate": "4500.00",
+        "grossAmount": "13500.00",
+        "netAmount": "13500.00",
+        "currency": "INR"
+      }
+    }
+  }
+  ```
+* **Error Semantics:**
+  - `400 BAD_REQUEST`: Invalid dates, past check-in, capacity exceeded, or cross-hotel mismatch.
+  - `401 UNAUTHORIZED`: Missing or invalid JWT.
+  - `403 FORBIDDEN`: Non-customer role attempting reservation creation.
+  - `404 NOT_FOUND`: Hotel or RoomType not found or inactive.
+  - `409 CONFLICT` (`ROOM_NOT_AVAILABLE`): Insufficient available physical rooms for requested dates.
+
+### 8.2 List Bookings (Role-Scoped)
+* **Endpoint:** `GET /api/v1/bookings`
+* **Access:** Authenticated (`CUSTOMER`, `HOTEL_MANAGER`, `ADMIN`)
+* **Role Scoping:**
+  - `CUSTOMER`: Returns only personal reservations.
+  - `HOTEL_MANAGER`: Returns only reservations for properties assigned to the manager.
+  - `ADMIN`: Returns all reservations platform-wide.
+* **Query Parameters:** `page`, `limit`, `status`, `hotelId`, `customerId` (admin only).
+
+### 8.3 Get Booking by ID
+* **Endpoint:** `GET /api/v1/bookings/:id`
+* **Access:** Authenticated (`CUSTOMER`, `HOTEL_MANAGER`, `ADMIN`)
+* **IDOR Defense:** Non-owners and unassigned managers receive `404 NOT_FOUND` to prevent resource existence disclosure.
+
+### 8.4 Cancel Reservation
+* **Endpoint:** `PATCH /api/v1/bookings/:id/cancel`
+* **Access:** Authenticated (Booking owner `CUSTOMER`, assigned `HOTEL_MANAGER`, or `ADMIN`)
+* **Behavior:** Transitions status to `CANCELLED`, records `cancelledAt` and `cancellationReason`, and releases allocated rooms (`status = CANCELLED`), making them immediately available to other guests.
+
+### 8.5 Update Booking Lifecycle Status
+* **Endpoint:** `PATCH /api/v1/bookings/:id/status`
+* **Access:** Authenticated (`HOTEL_MANAGER`, `ADMIN`)
+* **Payload:** `{ "status": "CHECKED_IN" }`
+* **Lifecycle Validation:**
+  - `PENDING` → `CONFIRMED`, `CANCELLED`, `EXPIRED`
+  - `CONFIRMED` → `CHECKED_IN`, `CANCELLED`, `NO_SHOW`
+  - `CHECKED_IN` → `CHECKED_OUT`
+  - Terminal states (`CANCELLED`, `CHECKED_OUT`, `EXPIRED`, `NO_SHOW`) cannot be transitioned.
+
+

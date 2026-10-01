@@ -2011,6 +2011,30 @@ WHERE r.room_type_id = $roomTypeId
 - **Hotel Discovery Filters:** B-Tree indexes on `hotels(city)`, `hotels(starRating)`, and `hotels(isActive)` support fast pagination and multi-attribute customer queries.
 
 ### 51.3 Transactional Isolation Notice for Future Phase 8
-Phase 7 queries operate under standard `READ COMMITTED` isolation for search performance. In Phase 8, the Booking Engine must promote to `REPEATABLE READ` or utilize `SELECT ... FOR UPDATE SKIP LOCKED` on the `rooms` table to prevent race conditions during concurrent reservations.
+Phase 7 queries operate under standard `READ COMMITTED` isolation for search performance. In Phase 8, the Booking Engine must promote to `REPEATABLE READ` or utilize `SELECT ... FOR UPDATE` on the `rooms` table to prevent race conditions during concurrent reservations.
+
+---
+
+## 52. Phase 8 Implementation & Concurrency Architecture Sign-Off
+
+### 52.1 Authoritative Booking Transaction Isolation
+The Booking Engine establishes authoritative PostgreSQL transactions via `prisma.$transaction`:
+1. **Pessimistic Row-Level Locking:**
+   ```sql
+   SELECT id, room_number
+   FROM rooms
+   WHERE room_type_id = $roomTypeId
+     AND deleted_at IS NULL
+     AND operational_status = 'AVAILABLE'
+   ORDER BY room_number ASC
+   FOR UPDATE;
+   ```
+   Deterministic ordering prevents deadlock and forces concurrent booking transactions competing for the same category to serialize.
+2. **Dual-Layer Overlap Prevention:**
+   - **Layer 1 (Application Transaction):** Reads newly committed active allocations under the locked rows and verifies that available inventory satisfies `requestedRooms`. Throws `409 ROOM_NOT_AVAILABLE` cleanly if exhausted.
+   - **Layer 2 (PostgreSQL Storage Engine):** The native GiST exclusion constraint (`exclude_overlapping_room_allocations`) on `booking_rooms` guarantees at the storage engine level that two overlapping active intervals (`RESERVED`, `OCCUPIED`) for the same physical room can never coexist.
+3. **Historical Price Freezing:**
+   Persists `booking_price_snapshots` with exact integer cents (`BigInt`), isolating historical revenue records from subsequent RoomType pricing changes.
+
 
 
