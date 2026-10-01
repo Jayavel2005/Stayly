@@ -1,0 +1,28 @@
+# Dependency directories
+node_modules/
+backend/node_modules/
+
+# Build artifacts
+dist/
+backend/dist/
+build/
+
+# Local environment and secret files
+.env
+.env.local
+.env.*.local
+*.env
+backend/.env
+!backend/.env.example
+
+# OS and IDE caches
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test coverage
+coverage/
+backend/coverage/

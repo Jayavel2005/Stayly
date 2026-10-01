@@ -1,0 +1,13 @@
+// =============================================================================
+// Stayora Phase 1 — Prisma Foundation Schema
+// Full domain entities will be defined in Phase 2
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
