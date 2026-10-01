@@ -152,6 +152,10 @@ this.resourceOwnershipService.assertOwnerOrAdmin(
 
 1. **Admin Role Isolation:** Platform administrative endpoints (`/api/v1/admin/*`) are strictly guarded by `@Roles(UserRole.ADMIN)`.
 2. **Explicit Administrative Permissions:** Admins are not treated as implicit entries in the `hotel_managers` table. Operational admin routes explicitly specify whether admin override is permitted using `assertAdminOrManagerAccess()`.
+3. **Property Creation & Manager Assignment Governance:**
+   - Property creation (`POST /api/v1/admin/hotels`) is strictly restricted to `ADMIN`.
+   - Managers cannot assign properties to themselves or others. Administrative assignments (`POST /api/v1/admin/hotels/:id/managers`) explicitly bind verified `HOTEL_MANAGER` accounts to properties.
+   - De-assignment (`DELETE /api/v1/admin/hotels/:id/managers/:managerId`) revokes access immediately.
 
 ---
 
@@ -160,14 +164,20 @@ this.resourceOwnershipService.assertOwnerOrAdmin(
 ### Unit Tests
 * `src/common/guards/roles.guard.spec.ts`: Tests missing roles, missing authentication, matching roles, insufficient roles, and multi-role OR evaluation.
 * `src/modules/hotels/authorization/hotel-authorization.service.spec.ts`: Tests hotel existence verification, assigned manager access, unassigned manager rejection, and admin override.
+* `src/modules/hotels/hotels.service.spec.ts`: Tests admin creation, public discovery filtering, manager assigned property retrieval, unassigned manager rejection, and soft-deactivation.
 * `src/common/authorization/resource-ownership.service.spec.ts`: Tests customer ownership match, non-owner rejection, and admin bypass.
 
-### E2E Security & IDOR Tests (`test/authorization.e2e-spec.ts`)
-* **Role Invariants (401 vs 403):** Verified missing token $\rightarrow$ 401, invalid token $\rightarrow$ 401, customer on manager endpoint $\rightarrow$ 403.
-* **Vertical Escalation:** Customer $\rightarrow$ Manager (403), Customer $\rightarrow$ Admin (403), Manager $\rightarrow$ Admin (403), Admin $\rightarrow$ Admin (200).
-* **Horizontal IDOR Defense:** Manager A $\rightarrow$ Hotel A (200), Manager A $\rightarrow$ Hotel B (200), Manager A $\rightarrow$ Hotel C (403 Forbidden on GET, PATCH, and DELETE).
-* **Manager Isolation:** Manager B $\rightarrow$ Hotel C (200), Manager B $\rightarrow$ Hotel A (403 Forbidden).
-* **Query Scoping:** Manager A list query returns only assigned hotels; Hotel C is omitted.
+### E2E Security & IDOR Tests
+* `test/authorization.e2e-spec.ts`:
+  - **Role Invariants (401 vs 403):** Verified missing token $\rightarrow$ 401, invalid token $\rightarrow$ 401, customer on manager endpoint $\rightarrow$ 403.
+  - **Vertical Escalation:** Customer $\rightarrow$ Manager (403), Customer $\rightarrow$ Admin (403), Manager $\rightarrow$ Admin (403), Admin $\rightarrow$ Admin (200).
+  - **Horizontal IDOR Defense:** Manager A $\rightarrow$ Hotel A (200), Manager A $\rightarrow$ Hotel B (200), Manager A $\rightarrow$ Hotel C (403 Forbidden on GET, PATCH, and DELETE).
+  - **Manager Isolation:** Manager B $\rightarrow$ Hotel C (200), Manager B $\rightarrow$ Hotel A (403 Forbidden).
+  - **Query Scoping:** Manager A list query returns only assigned hotels; Hotel C is omitted.
+* `test/hotels.e2e-spec.ts`:
+  - **Property Lifecycle & CRUD:** Admin property creation, manager retrieval, manager update, and soft-deletion.
+  - **Public Discovery & Filtering:** Unauthenticated listing with pagination (`page`, `limit`), case-insensitive city search, star rating filter, and hiding inactive/soft-deleted properties.
+  - **Manager Assignment Enforcement:** Admin assigning/unassigning managers; verifying unassigned managers receive 403 on property updates and deletion.
 
 ---
 
