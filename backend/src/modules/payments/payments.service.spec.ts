@@ -12,6 +12,7 @@ import {
   PaymentAttemptStatus,
 } from './types/payment-status.enum';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { NotificationsService } from '../notifications/notifications.service';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
@@ -82,10 +83,16 @@ describe('PaymentsService', () => {
       $transaction: jest.fn((callback) => callback(prisma)),
     };
 
+    const notificationsService = {
+      create: jest.fn().mockResolvedValue({ id: 'mock-notif-id' }),
+      createForManagersOfHotel: jest.fn().mockResolvedValue(1),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentsService,
         { provide: PrismaService, useValue: prisma },
+        { provide: NotificationsService, useValue: notificationsService },
         MockPaymentGateway,
         {
           provide: PAYMENT_GATEWAY,

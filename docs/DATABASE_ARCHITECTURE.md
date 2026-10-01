@@ -3,7 +3,7 @@
 > **Authoritative PostgreSQL Relational Architecture**  
 > **ORM Layer:** Prisma v6.19  
 > **Database Engine:** PostgreSQL 16  
-> **Status:** Phase 9 (Payments & Payment Attempts) Complete
+> **Status:** Phase 12 (Notifications) Complete
 
 ---
 
@@ -261,5 +261,37 @@ WHERE hotel_id = :hotelId AND is_published = true
 GROUP BY rating;
 ```
 Results are rounded to one decimal place consistently (`Math.round(rawAvg * 10) / 10`) and returned alongside paginated items.
+
+---
+
+## 8. Notifications Architecture (Phase 12)
+
+### 8.1 Relational Schema (`notifications` Table)
+```sql
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(150) NOT NULL,
+    message TEXT NOT NULL,
+    type VARCHAR(50) NOT NULL DEFAULT 'SYSTEM',
+    metadata JSONB,
+    is_read BOOLEAN NOT NULL DEFAULT false,
+    read_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 8.2 Database Invariants & Ownership Integrity
+1. **Strict User Isolation**: Every notification is foreign-keyed to `users.id` with `ON DELETE CASCADE`. Unauthenticated or cross-tenant inspection is rejected at the repository query boundary (`WHERE user_id = :currentUserId`).
+2. **Read State Consistency**:
+   - Marking as read enforces `is_read = true` and `read_at = CURRENT_TIMESTAMP`.
+   - Repeated/idempotent read operations preserve the original `read_at` timestamp.
+3. **Derived Communication Status**:
+   - Notifications are decoupled communication records and not the transactional source of truth for booking/payment states. Failures in notification dispatch/persistence do not compromise authoritative business state.
+
+### 8.3 Indexing & Performance Design
+* **`notifications(user_id, is_read)` composite index**: Enables high-efficiency unread count lookups (`SELECT COUNT(*) FROM notifications WHERE user_id = :userId AND is_read = false`) and filtered queries (`isRead=false`).
+* **`notifications(user_id, created_at DESC)` access pattern**: Optimized sorting by newest-first timestamps for paginated customer notification feeds.
+
 
 

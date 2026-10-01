@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import { HotelAuthorizationService } from '../hotels/authorization/hotel-authorization.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/types/notification-type.enum';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { UserRole } from '../auth/types/user-role.enum';
 import { BookingStatus } from '../bookings/types/booking-status.enum';
@@ -24,6 +26,7 @@ export class ReviewsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly hotelAuthorizationService: HotelAuthorizationService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -107,6 +110,22 @@ export class ReviewsService {
       this.logger.log(
         `[ReviewsService] Review ${review.id} created for hotel ${booking.hotelId} by user ${user.id}`,
       );
+
+      // Dispatch Manager Notification (non-blocking)
+      try {
+        await this.notificationsService.createForManagersOfHotel(booking.hotelId, {
+          type: NotificationType.REVIEW_CREATED,
+          title: 'New Review Submitted',
+          message: `A guest submitted a ${dto.rating}-star review for your property.`,
+          data: {
+            reviewId: review.id,
+            hotelId: booking.hotelId,
+            rating: dto.rating,
+          },
+        });
+      } catch (notifErr: any) {
+        this.logger.warn(`Failed to dispatch review notification: ${notifErr.message}`);
+      }
 
       return this.mapToReviewResponse(review);
     } catch (error: any) {

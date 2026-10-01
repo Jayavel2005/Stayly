@@ -9,11 +9,14 @@ import { BookingStatus, BookingRoomStatus } from './types/booking-status.enum';
 import { UserRole } from '../auth/types/user-role.enum';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
+import { NotificationsService } from '../notifications/notifications.service';
+
 describe('BookingsService Unit Tests', () => {
   let service: BookingsService;
   let prisma: any;
   let hotelAuthService: any;
   let availabilityService: any;
+  let notificationsService: any;
 
   const mockHotelId = '44444444-4444-4444-8444-444444444444';
   const mockRoomTypeId = '57391b9b-ed2d-4e3d-bb09-63728b53254f';
@@ -22,6 +25,11 @@ describe('BookingsService Unit Tests', () => {
   const mockBookingId = '99999999-9999-4999-8999-999999999999';
 
   beforeEach(async () => {
+    notificationsService = {
+      create: jest.fn().mockResolvedValue({ id: 'mock-notif-id' }),
+      createForManagersOfHotel: jest.fn().mockResolvedValue(1),
+    };
+
     prisma = {
       $transaction: jest.fn(),
       $queryRaw: jest.fn().mockResolvedValue([{ id: mockBookingId, status: BookingStatus.CONFIRMED }]),
@@ -60,6 +68,7 @@ describe('BookingsService Unit Tests', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: HotelAuthorizationService, useValue: hotelAuthService },
         { provide: AvailabilityService, useValue: availabilityService },
+        { provide: NotificationsService, useValue: notificationsService },
       ],
     }).compile();
 

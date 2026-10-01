@@ -2,6 +2,8 @@ import { Injectable, HttpStatus, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import { HotelAuthorizationService } from '../hotels/authorization/hotel-authorization.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/types/notification-type.enum';
 import { BookingStatus, BookingRoomStatus } from './types/booking-status.enum';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { UserRole } from '../auth/types/user-role.enum';
@@ -44,6 +46,7 @@ export class BookingLifecycleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly hotelAuthorizationService: HotelAuthorizationService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -236,6 +239,34 @@ export class BookingLifecycleService {
       return updated;
     });
 
+    // Dispatch Domain Notifications (non-blocking)
+    try {
+      await this.notificationsService.create({
+        userId: updatedBooking.customerId,
+        type: NotificationType.BOOKING_CANCELLED,
+        title: 'Booking Cancelled',
+        message: 'Your booking has been cancelled.',
+        data: {
+          bookingId: updatedBooking.id,
+          hotelId: updatedBooking.hotelId,
+          bookingReference: updatedBooking.bookingReference,
+        },
+      });
+
+      await this.notificationsService.createForManagersOfHotel(updatedBooking.hotelId, {
+        type: NotificationType.BOOKING_CANCELLED,
+        title: 'Booking Cancelled',
+        message: `Reservation ${updatedBooking.bookingReference} has been cancelled.`,
+        data: {
+          bookingId: updatedBooking.id,
+          hotelId: updatedBooking.hotelId,
+          bookingReference: updatedBooking.bookingReference,
+        },
+      });
+    } catch (notifErr: any) {
+      this.logger.warn(`Failed to dispatch booking cancelled notification: ${notifErr.message}`);
+    }
+
     return this.mapToBookingResponse(updatedBooking, 'Booking cancelled successfully.');
   }
 
@@ -412,6 +443,34 @@ export class BookingLifecycleService {
       return updated;
     });
 
+    // Dispatch Domain Notifications (non-blocking)
+    try {
+      await this.notificationsService.create({
+        userId: updatedBooking.customerId,
+        type: NotificationType.CHECK_IN_COMPLETED,
+        title: 'Check-in Completed',
+        message: 'You have successfully checked in.',
+        data: {
+          bookingId: updatedBooking.id,
+          hotelId: updatedBooking.hotelId,
+          bookingReference: updatedBooking.bookingReference,
+        },
+      });
+
+      await this.notificationsService.createForManagersOfHotel(updatedBooking.hotelId, {
+        type: NotificationType.CHECK_IN_COMPLETED,
+        title: 'Guest Checked In',
+        message: `Guest for reservation ${updatedBooking.bookingReference} has checked in.`,
+        data: {
+          bookingId: updatedBooking.id,
+          hotelId: updatedBooking.hotelId,
+          bookingReference: updatedBooking.bookingReference,
+        },
+      });
+    } catch (notifErr: any) {
+      this.logger.warn(`Failed to dispatch check-in notification: ${notifErr.message}`);
+    }
+
     return this.mapToBookingResponse(updatedBooking, 'Booking checked in successfully.');
   }
 
@@ -553,6 +612,34 @@ export class BookingLifecycleService {
       this.logger.log(`[BookingLifecycle] Booking ${bookingId} checked out by ${user.email}`);
       return updated;
     });
+
+    // Dispatch Domain Notifications (non-blocking)
+    try {
+      await this.notificationsService.create({
+        userId: updatedBooking.customerId,
+        type: NotificationType.CHECK_OUT_COMPLETED,
+        title: 'Check-out Completed',
+        message: 'Your stay has been completed.',
+        data: {
+          bookingId: updatedBooking.id,
+          hotelId: updatedBooking.hotelId,
+          bookingReference: updatedBooking.bookingReference,
+        },
+      });
+
+      await this.notificationsService.createForManagersOfHotel(updatedBooking.hotelId, {
+        type: NotificationType.CHECK_OUT_COMPLETED,
+        title: 'Guest Checked Out',
+        message: `Guest for reservation ${updatedBooking.bookingReference} has completed check-out.`,
+        data: {
+          bookingId: updatedBooking.id,
+          hotelId: updatedBooking.hotelId,
+          bookingReference: updatedBooking.bookingReference,
+        },
+      });
+    } catch (notifErr: any) {
+      this.logger.warn(`Failed to dispatch check-out notification: ${notifErr.message}`);
+    }
 
     return this.mapToBookingResponse(updatedBooking, 'Booking checked out successfully.');
   }

@@ -4,6 +4,8 @@ import { DomainException } from '../../common/exceptions/domain.exception';
 import { HotelAuthorizationService } from '../hotels/authorization/hotel-authorization.service';
 import { AvailabilityService } from '../availability/availability.service';
 import { BookingLifecycleService } from './booking-lifecycle.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/types/notification-type.enum';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { QueryBookingsDto } from './dto/query-bookings.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
@@ -25,6 +27,7 @@ export class BookingsService {
     private readonly hotelAuthorizationService: HotelAuthorizationService,
     private readonly availabilityService: AvailabilityService,
     private readonly lifecycleService: BookingLifecycleService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -246,6 +249,36 @@ export class BookingsService {
         },
         { timeout: 15000, maxWait: 10000 },
       );
+
+      // Dispatch Domain Notifications (non-blocking)
+      try {
+        await this.notificationsService.create({
+          userId: customerId,
+          type: NotificationType.BOOKING_CREATED,
+          title: 'Booking Created',
+          message: 'Your booking has been created successfully.',
+          data: {
+            bookingId: booking.id,
+            hotelId: booking.hotelId,
+            bookingReference: booking.bookingReference,
+          },
+        });
+
+        await this.notificationsService.createForManagersOfHotel(booking.hotelId, {
+          type: NotificationType.BOOKING_CREATED,
+          title: 'New Booking Created',
+          message: `A new booking (${booking.bookingReference}) has been created for your property.`,
+          data: {
+            bookingId: booking.id,
+            hotelId: booking.hotelId,
+            bookingReference: booking.bookingReference,
+          },
+        });
+      } catch (notifErr: any) {
+        this.logger.warn(
+          `[BookingsService] Failed to dispatch booking created notification: ${notifErr.message}`,
+        );
+      }
 
       return this.mapToBookingResponse(booking);
     } catch (error: any) {

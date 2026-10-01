@@ -26,6 +26,8 @@ import {
   PAYMENT_GATEWAY,
 } from './gateways/payment-gateway.interface';
 import type { PaymentGateway } from './gateways/payment-gateway.interface';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/types/notification-type.enum';
 
 @Injectable()
 export class PaymentsService {
@@ -34,6 +36,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -571,6 +574,64 @@ export class PaymentsService {
         return updatedPayment;
       }
     });
+
+    // Dispatch Domain Notifications (non-blocking)
+    if (finalPayment.status === PaymentStatus.SUCCEEDED) {
+      try {
+        await this.notificationsService.create({
+          userId: booking.customerId,
+          type: NotificationType.PAYMENT_SUCCESS,
+          title: 'Payment Successful',
+          message: 'Your payment was completed successfully.',
+          data: {
+            bookingId: booking.id,
+            paymentId: finalPayment.id,
+            amountCents: finalPayment.amountCents.toString(),
+          },
+        });
+
+        await this.notificationsService.create({
+          userId: booking.customerId,
+          type: NotificationType.BOOKING_CONFIRMED,
+          title: 'Booking Confirmed',
+          message: 'Your hotel booking has been confirmed.',
+          data: {
+            bookingId: booking.id,
+            hotelId: booking.hotelId,
+            bookingReference: booking.bookingReference,
+          },
+        });
+
+        await this.notificationsService.createForManagersOfHotel(booking.hotelId, {
+          type: NotificationType.BOOKING_CONFIRMED,
+          title: 'Booking Confirmed',
+          message: `Reservation ${booking.bookingReference} has been confirmed.`,
+          data: {
+            bookingId: booking.id,
+            hotelId: booking.hotelId,
+            bookingReference: booking.bookingReference,
+          },
+        });
+      } catch (notifErr: any) {
+        this.logger.warn(`Failed to dispatch payment success notifications: ${notifErr.message}`);
+      }
+    } else if (finalPayment.status === PaymentStatus.FAILED) {
+      try {
+        await this.notificationsService.create({
+          userId: booking.customerId,
+          type: NotificationType.PAYMENT_FAILED,
+          title: 'Payment Failed',
+          message: 'Your payment could not be completed.',
+          data: {
+            bookingId: booking.id,
+            paymentId: finalPayment.id,
+            reason: finalPayment.failureReason || 'Declined',
+          },
+        });
+      } catch (notifErr: any) {
+        this.logger.warn(`Failed to dispatch payment failed notification: ${notifErr.message}`);
+      }
+    }
 
     return this.formatPaymentResponse(finalPayment);
   }

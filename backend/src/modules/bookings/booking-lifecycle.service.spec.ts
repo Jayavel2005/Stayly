@@ -6,6 +6,7 @@ import { DomainException } from '../../common/exceptions/domain.exception';
 import { BookingStatus, BookingRoomStatus } from './types/booking-status.enum';
 import { UserRole } from '../auth/types/user-role.enum';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { NotificationsService } from '../notifications/notifications.service';
 
 describe('BookingLifecycleService Unit Tests', () => {
   let service: BookingLifecycleService;
@@ -124,11 +125,17 @@ describe('BookingLifecycleService Unit Tests', () => {
       assertManagerAccess: jest.fn().mockResolvedValue(undefined),
     };
 
+    const notificationsService = {
+      create: jest.fn().mockResolvedValue({ id: 'mock-notif-id' }),
+      createForManagersOfHotel: jest.fn().mockResolvedValue(1),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BookingLifecycleService,
         { provide: PrismaService, useValue: prisma },
         { provide: HotelAuthorizationService, useValue: hotelAuthService },
+        { provide: NotificationsService, useValue: notificationsService },
       ],
     }).compile();
 

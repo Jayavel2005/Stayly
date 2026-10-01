@@ -874,6 +874,95 @@ Physical room inventory endpoints are restricted to property management (`HOTEL_
   ```
 * **Behavior:** Toggles review visibility. Concealed (`isPublished: false`) reviews are excluded from public discovery and public rating aggregation.
 
+---
+
+## 12. Notifications API Specification (Phase 12)
+
+All notification endpoints require authentication with `Authorization: Bearer <JWT>`. The authenticated identity is derived strictly server-side from JWT (`currentUser.id`).
+
+### 12.1 List User Notifications
+* **Endpoint:** `GET /api/v1/notifications`
+* **Access:** Authenticated Users (`CUSTOMER`, `HOTEL_MANAGER`, `ADMIN`)
+* **Query Parameters:**
+  | Parameter | Type | Default | Description |
+  | :--- | :--- | :--- | :--- |
+  | `page` | integer | `1` | Page number (min: 1) |
+  | `limit` | integer | `20` | Items per page (min: 1, max: 100) |
+  | `isRead` | boolean | - | Filter by read status (`true` or `false`) |
+  | `sortBy` | string | `newest` | Sort ordering allowlist: `newest`, `oldest` |
+* **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "items": [
+        {
+          "id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+          "userId": "11111111-1111-4111-8111-111111111111",
+          "type": "BOOKING_CONFIRMED",
+          "title": "Booking Confirmed",
+          "message": "Your hotel booking has been confirmed.",
+          "data": {
+            "bookingId": "8b9c1d2e-3f4a-5b6c-7d8e-9f0a1b2c3d4e",
+            "hotelId": "44444444-4444-4444-8444-444444444444",
+            "bookingReference": "STY-202610-A1B2C3"
+          },
+          "isRead": false,
+          "readAt": null,
+          "createdAt": "2026-10-01T14:30:00.000Z"
+        }
+      ],
+      "meta": {
+        "page": 1,
+        "limit": 20,
+        "total": 5,
+        "totalPages": 1,
+        "unreadCount": 3
+      }
+    }
+  }
+  ```
+
+### 12.2 Get Unread Notification Count
+* **Endpoint:** `GET /api/v1/notifications/unread-count`
+* **Access:** Authenticated Users
+* **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "count": 3
+    }
+  }
+  ```
+
+### 12.3 Get Notification by ID
+* **Endpoint:** `GET /api/v1/notifications/:id`
+* **Access:** Authenticated Owner
+* **Authorization Invariant:** Customer A cannot access Customer B's notification (`404 NOT_FOUND` IDOR defense).
+* **Success Response (`200 OK`):** Returns single `NotificationResponse`.
+
+### 12.4 Mark Notification As Read
+* **Endpoint:** `PATCH /api/v1/notifications/:id/read`
+* **Access:** Authenticated Owner
+* **Behavior:** Idempotently sets `isRead = true` and `readAt = NOW()`.
+* **Success Response (`200 OK`):** Updated `NotificationResponse` with `isRead: true` and `readAt` timestamp.
+* **Error Response (`404 NOT_FOUND`):** If notification does not exist or belongs to another user.
+
+### 12.5 Mark All Notifications As Read
+* **Endpoint:** `PATCH /api/v1/notifications/read-all`
+* **Access:** Authenticated Users
+* **Behavior:** Atomically transitions all unread notifications for the calling user to `isRead = true`. Other users remain completely unaffected.
+* **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "count": 3,
+    "message": "All notifications marked as read."
+  }
+  ```
+
+
 
 
 

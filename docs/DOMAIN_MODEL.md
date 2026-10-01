@@ -575,6 +575,46 @@ The client can never change these fields or transfer a review from Hotel A to Ho
 * **Administrative Moderation**: Admins can toggle `isPublished` (`PATCH /api/v1/admin/reviews/:id/moderation`). Concealed reviews (`isPublished: false`) are immediately omitted from public listing and public aggregation.
 * **Manager Isolation**: Hotel managers can view reviews for properties they manage via `GET /api/v1/manager/hotels/:hotelId/reviews`. Manager authorization is enforced strictly via `HotelAuthorizationService.assertManagerAccess`. Managers cannot delete or modify customer reviews.
 
+---
+
+## 14. Notifications Domain Model (Phase 12)
+
+```text
+Domain Event (Booking / Payment / Review)
+    ↓
+NotificationsService (Backend Domain Dispatcher)
+    ↓
+PostgreSQL Notification Entity (Persistent Storage)
+    ↓
+REST Consumer (Customer / Manager / Admin)
+```
+
+### 14.1 Notification Lifecycle & State Machine
+Every notification record represents an event-driven communication artifact with an explicit lifecycle:
+```text
+  [Created] (isRead = false, readAt = null)
+      │
+      ├── (markAsRead / markAllAsRead)
+      ▼
+   [Read] (isRead = true, readAt = timestamp)
+```
+- **Read Idempotency**: Marking an already-read notification as read preserves the initial `readAt` timestamp and returns the entity safely without error or mutation.
+
+### 14.2 Authoritative State vs. Notification Artifacts
+* **Authoritative Principle**:
+  > **Notifications are NEVER the source of truth.**  
+  > `Booking.status` and `Payment.status` remain the sole authoritative source of truth. If a notification fails to persist, the underlying business operation (e.g., booking creation or payment settlement) is preserved and not rolled back.
+* Frontend clients consume notification metadata (`data.bookingId`, `data.hotelId`) to navigate and query authoritative domain endpoints.
+
+### 14.3 Multi-Tenant Manager Routing & Isolation
+* Notifications intended for property managers (e.g., `BOOKING_CREATED`, `BOOKING_CANCELLED`, `CHECK_IN_COMPLETED`, `CHECK_OUT_COMPLETED`, `REVIEW_CREATED`) are dynamically routed to assigned staff using the authoritative `hotel_managers` join table.
+* Managers assigned to Hotel A never receive notification alerts for events occurring at Hotel B.
+
+### 14.4 Future Real-Time (SSE) Integration Design
+* Phase 12 provides complete PostgreSQL persistence and REST API delivery.
+* The centralized `NotificationsService.create` dispatcher provides the single integration point for future Server-Sent Events (SSE) or WebSockets in subsequent phases without refactoring domain logic.
+
+
 
 
 
