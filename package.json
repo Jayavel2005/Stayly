@@ -1,0 +1,16 @@
+{
+  "name": "stayora-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm --prefix apps/manager-web run dev",
+    "dev:manager": "npm --prefix apps/manager-web run dev",
+    "build": "npm --prefix apps/manager-web run build",
+    "preview": "npm --prefix apps/manager-web run preview"
+  },
+  "devDependencies": {}
+}
