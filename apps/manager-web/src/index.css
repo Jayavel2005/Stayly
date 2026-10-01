@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Canvas & Base Text - Warm Sand (#faf9f6) and Deep Charcoal (#23211d) */
+    --background: 40 20% 98%;          /* #faf9f6 */
+    --foreground: 30 10% 12%;          /* #23211d */
+
+    /* Cards & Surfaces */
+    --card: 0 0% 100%;                 /* #ffffff */
+    --card-foreground: 30 10% 12%;     /* #23211d */
+
+    /* Popovers & Overlays */
+    --popover: 0 0% 100%;              /* #ffffff */
+    --popover-foreground: 30 10% 12%;  /* #23211d */
+
+    /* Primary Brand (Deep Ocean #163952) */
+    --primary: 206 58% 21%;            /* #163952 */
+    --primary-foreground: 0 0% 100%;   /* #ffffff */
+
+    /* Secondary Controls */
+    --secondary: 40 18% 94%;           /* #f4f2ec */
+    --secondary-foreground: 30 10% 23%;/* #3f3b34 */
+
+    /* Muted Elements */
+    --muted: 40 18% 94%;               /* #f4f2ec */
+    --muted-foreground: 38 9% 49%;     /* #878071 */
+
+    /* Interactive Hover Accents */
+    --accent: 206 40% 96%;             /* #f0f5fa */
+    --accent-foreground: 206 58% 21%;  /* #163952 */
+
+    /* Semantic Statuses */
+    --success: 142 71% 29%;            /* #15803d */
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 38 92% 37%;             /* #b45309 */
+    --warning-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 42%;          /* #b91c1c */
+    --destructive-foreground: 0 0% 100%;
+
+    --info: 199 89% 32%;               /* #0369a1 */
+    --info-foreground: 0 0% 100%;
+
+    /* Structural Boundaries */
+    --border: 38 16% 89%;              /* #e7e4dc */
+    --input: 38 16% 89%;               /* #e7e4dc */
+    --ring: 204 53% 46%;               /* #3884b5 */
+
+    /* Radius Benchmark */
+    --radius: 0.5rem;                  /* 8px */
+  }
+
+  .dark {
+    --background: 30 9% 7%;            /* #141311 */
+    --foreground: 40 20% 98%;          /* #faf9f6 */
+
+    --card: 30 10% 12%;                /* #23211d */
+    --card-foreground: 40 20% 98%;     /* #faf9f6 */
+
+    --popover: 30 10% 12%;             /* #23211d */
+    --popover-foreground: 40 20% 98%;  /* #faf9f6 */
+
+    --primary: 204 53% 59%;            /* #5fa2cc */
+    --primary-foreground: 30 9% 7%;    /* #141311 */
+
+    --secondary: 30 10% 23%;           /* #3f3b34 */
+    --secondary-foreground: 40 20% 98%;/* #faf9f6 */
+
+    --muted: 30 10% 18%;               /* #2c2924 */
+    --muted-foreground: 38 10% 63%;    /* #aba495 */
+
+    --accent: 30 10% 18%;              /* #2c2924 */
+    --accent-foreground: 204 53% 84%;  /* #c0d9ec */
+
+    --success: 142 69% 58%;            /* #4ade80 */
+    --success-foreground: 30 9% 7%;
+
+    --warning: 43 96% 56%;             /* #fbbf24 */
+    --warning-foreground: 30 9% 7%;
+
+    --destructive: 0 91% 71%;          /* #f87171 */
+    --destructive-foreground: 30 9% 7%;
+
+    --info: 199 89% 61%;               /* #38bdf8 */
+    --info-foreground: 30 9% 7%;
+
+    --border: 30 10% 23%;              /* #3f3b34 */
+    --input: 30 10% 23%;               /* #3f3b34 */
+    --ring: 204 53% 59%;               /* #5fa2cc */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Custom Scrollbar for Dense Tables and Manifests */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.45);
+}
+
+/* Reduced Motion Override per Design System */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
