@@ -85,9 +85,9 @@ export const SearchWidget: React.FC<SearchWidgetProps> = ({
   return (
     <form
       onSubmit={handleExecuteSearch}
-      className={`rounded-2xl border border-border bg-card/95 backdrop-blur-md shadow-lg p-2.5 sm:p-3 transition-all ${className}`}
+      className={`rounded-xl border border-border bg-card shadow-xs p-1.5 sm:p-2 transition-all ${className}`}
     >
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-2 sm:gap-3 items-center">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-1.5 sm:gap-2 items-center">
         {/* Destination Selector (Col 1-4) */}
         <div ref={locationRef} className="relative md:col-span-4">
           <div
@@ -95,17 +95,17 @@ export const SearchWidget: React.FC<SearchWidgetProps> = ({
               setLocationOpen(!locationOpen);
               setGuestsOpen(false);
             }}
-            className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer select-none ${
+            className={`flex items-center gap-2.5 p-2 sm:p-2.5 rounded-lg border transition-all cursor-pointer select-none ${
               locationOpen
                 ? 'border-primary ring-2 ring-primary/20 bg-background'
-                : 'border-border hover:border-muted-foreground/30 bg-secondary/40'
+                : 'border-border hover:border-muted-foreground/30 bg-secondary/30'
             }`}
           >
-            <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
-              <MapPin size={18} className="stroke-[2]" />
+            <div className="p-1.5 rounded-md bg-primary/10 text-primary shrink-0">
+              <MapPin size={15} className="stroke-[2]" />
             </div>
             <div className="flex-1 min-w-0">
-              <span className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground leading-none">
                 Destination
               </span>
               <input
@@ -115,7 +115,7 @@ export const SearchWidget: React.FC<SearchWidgetProps> = ({
                 onChange={(e) => setCity(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
                 onFocus={() => setLocationOpen(true)}
-                className="w-full bg-transparent text-sm font-semibold text-foreground placeholder:text-muted-foreground placeholder:font-normal focus:outline-none truncate"
+                className="w-full bg-transparent text-xs sm:text-sm font-semibold text-foreground placeholder:text-muted-foreground placeholder:font-normal focus:outline-none truncate mt-0.5"
               />
             </div>
             {city && (
@@ -169,33 +169,33 @@ export const SearchWidget: React.FC<SearchWidgetProps> = ({
         </div>
 
         {/* Date Range Picker (Col 5-8) */}
-        <div className="md:col-span-4 grid grid-cols-2 gap-2">
+        <div className="md:col-span-4 grid grid-cols-2 gap-1.5 sm:gap-2">
           {/* Check-In */}
-          <div className="p-3 rounded-xl border border-border hover:border-muted-foreground/30 bg-secondary/40 transition-colors flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0 hidden sm:block">
-              <Calendar size={16} className="stroke-[2]" />
+          <div className="p-2 sm:p-2.5 rounded-lg border border-border hover:border-muted-foreground/30 bg-secondary/30 transition-colors flex items-center gap-2">
+            <div className="p-1.5 rounded-md bg-primary/10 text-primary shrink-0 hidden sm:block">
+              <Calendar size={14} className="stroke-[2]" />
             </div>
             <div className="min-w-0 flex-1">
-              <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground leading-none">
                 Check-In
               </span>
               <input
                 type="date"
                 value={checkIn}
                 onChange={(e) => setCheckIn(e.target.value)}
-                className="w-full bg-transparent text-xs sm:text-sm font-semibold text-foreground focus:outline-none cursor-pointer"
+                className="w-full bg-transparent text-xs sm:text-sm font-semibold text-foreground focus:outline-none cursor-pointer mt-0.5"
               />
             </div>
           </div>
 
           {/* Check-Out */}
-          <div className="p-3 rounded-xl border border-border hover:border-muted-foreground/30 bg-secondary/40 transition-colors flex items-center gap-2.5 relative">
+          <div className="p-2 sm:p-2.5 rounded-lg border border-border hover:border-muted-foreground/30 bg-secondary/30 transition-colors flex items-center gap-2 relative">
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between">
-                <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground leading-none">
                   Check-Out
                 </span>
-                <span className="text-[10px] font-mono text-primary font-bold bg-primary/10 px-1 rounded">
+                <span className="text-[9px] font-mono text-primary font-bold bg-primary/10 px-1 py-0.2 rounded">
                   {nights} {nights === 1 ? 'nt' : 'nts'}
                 </span>
               </div>
@@ -204,7 +204,7 @@ export const SearchWidget: React.FC<SearchWidgetProps> = ({
                 value={checkOut}
                 min={checkIn}
                 onChange={(e) => setCheckOut(e.target.value)}
-                className="w-full bg-transparent text-xs sm:text-sm font-semibold text-foreground focus:outline-none cursor-pointer"
+                className="w-full bg-transparent text-xs sm:text-sm font-semibold text-foreground focus:outline-none cursor-pointer mt-0.5"
               />
             </div>
           </div>
@@ -217,24 +217,24 @@ export const SearchWidget: React.FC<SearchWidgetProps> = ({
               setGuestsOpen(!guestsOpen);
               setLocationOpen(false);
             }}
-            className={`flex items-center gap-2.5 p-3 rounded-xl border transition-all cursor-pointer select-none ${
+            className={`flex items-center gap-2 p-2 sm:p-2.5 rounded-lg border transition-all cursor-pointer select-none ${
               guestsOpen
                 ? 'border-primary ring-2 ring-primary/20 bg-background'
-                : 'border-border hover:border-muted-foreground/30 bg-secondary/40'
+                : 'border-border hover:border-muted-foreground/30 bg-secondary/30'
             }`}
           >
-            <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
-              <Users size={16} className="stroke-[2]" />
+            <div className="p-1.5 rounded-md bg-primary/10 text-primary shrink-0">
+              <Users size={14} className="stroke-[2]" />
             </div>
             <div className="flex-1 min-w-0">
-              <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground leading-none">
                 Guests
               </span>
-              <div className="text-xs font-semibold text-foreground truncate">
+              <div className="text-xs font-semibold text-foreground truncate mt-0.5">
                 {adults + children} {adults + children === 1 ? 'Guest' : 'Guests'}, {rooms} {rooms === 1 ? 'Rm' : 'Rms'}
               </div>
             </div>
-            <ChevronDown size={14} className="text-muted-foreground shrink-0" />
+            <ChevronDown size={13} className="text-muted-foreground shrink-0" />
           </div>
 
           {/* Guests Popover Stepper */}
@@ -251,7 +251,7 @@ export const SearchWidget: React.FC<SearchWidgetProps> = ({
                     type="button"
                     disabled={adults <= 1}
                     onClick={() => setAdults(Math.max(1, adults - 1))}
-                    className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary disabled:opacity-40"
+                    className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary disabled:opacity-40 cursor-pointer"
                   >
                     <Minus size={13} />
                   </button>
@@ -259,7 +259,7 @@ export const SearchWidget: React.FC<SearchWidgetProps> = ({
                   <button
                     type="button"
                     onClick={() => setAdults(adults + 1)}
-                    className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary"
+                    className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary cursor-pointer"
                   >
                     <Plus size={13} />
                   </button>
@@ -277,7 +277,7 @@ export const SearchWidget: React.FC<SearchWidgetProps> = ({
                     type="button"
                     disabled={children <= 0}
                     onClick={() => setChildren(Math.max(0, children - 1))}
-                    className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary disabled:opacity-40"
+                    className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary disabled:opacity-40 cursor-pointer"
                   >
                     <Minus size={13} />
                   </button>
@@ -285,7 +285,7 @@ export const SearchWidget: React.FC<SearchWidgetProps> = ({
                   <button
                     type="button"
                     onClick={() => setChildren(children + 1)}
-                    className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary"
+                    className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary cursor-pointer"
                   >
                     <Plus size={13} />
                   </button>
@@ -303,7 +303,7 @@ export const SearchWidget: React.FC<SearchWidgetProps> = ({
                     type="button"
                     disabled={rooms <= 1}
                     onClick={() => setRooms(Math.max(1, rooms - 1))}
-                    className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary disabled:opacity-40"
+                    className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary disabled:opacity-40 cursor-pointer"
                   >
                     <Minus size={13} />
                   </button>
@@ -311,7 +311,7 @@ export const SearchWidget: React.FC<SearchWidgetProps> = ({
                   <button
                     type="button"
                     onClick={() => setRooms(rooms + 1)}
-                    className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary"
+                    className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary cursor-pointer"
                   >
                     <Plus size={13} />
                   </button>
@@ -334,9 +334,9 @@ export const SearchWidget: React.FC<SearchWidgetProps> = ({
         <div className="md:col-span-2">
           <Button
             type="submit"
-            size="lg"
-            className="w-full h-13 md:h-14 font-semibold text-sm tracking-wide rounded-xl shadow-md group"
-            leftIcon={<Search size={17} className="stroke-[2.2] group-hover:scale-110 transition-transform" />}
+            size="default"
+            className="w-full h-10 font-semibold text-xs sm:text-sm tracking-wide rounded-lg shadow-2xs group"
+            leftIcon={<Search size={15} className="stroke-[2.2] group-hover:scale-110 transition-transform" />}
           >
             {isCompact ? 'Search' : 'Search Hotels'}
           </Button>
