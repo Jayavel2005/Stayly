@@ -1,4 +1,4 @@
-import { Injectable, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpStatus, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HotelAuthorizationService } from './authorization/hotel-authorization.service';
@@ -9,6 +9,9 @@ import { AssignManagerDto } from './dto/assign-manager.dto';
 import { PaginatedResult } from './types/paginated-hotels.type';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import { UserRole, UserStatus } from '../auth/types/user-role.enum';
+import { RedisService } from '../../infrastructure/redis/redis.service';
+import { RedisKeys } from '../../infrastructure/redis/redis-keys';
+import { REDIS_TTL } from '../../infrastructure/redis/redis.constants';
 
 function slugify(text: string): string {
   return text
@@ -31,6 +34,7 @@ export class HotelsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly hotelAuthorizationService: HotelAuthorizationService,
+    @Optional() private readonly redisService?: RedisService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -430,7 +434,7 @@ export class HotelsService {
     const checkInDate = parseTimeToDate(dto.checkInTime);
     const checkOutDate = parseTimeToDate(dto.checkOutTime);
 
-    return this.prisma.hotel.update({
+    const updated = await this.prisma.hotel.update({
       where: { id: hotelId },
       data: {
         ...(dto.name && { name: dto.name.trim() }),
@@ -451,6 +455,12 @@ export class HotelsService {
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
     });
+
+    if (this.redisService) {
+      await this.redisService.delete(RedisKeys.hotel(hotelId));
+    }
+
+    return updated;
   }
 
   /**
@@ -464,6 +474,10 @@ export class HotelsService {
       where: { id: hotelId },
       data: { deletedAt: new Date(), isActive: false },
     });
+
+    if (this.redisService) {
+      await this.redisService.delete(RedisKeys.hotel(hotelId));
+    }
 
     return { message: 'Hotel property successfully deactivated.' };
   }
@@ -540,38 +554,48 @@ export class HotelsService {
    * Public discovery endpoint for retrieving an active hotel by ID.
    */
   async findPublicHotelById(hotelId: string) {
-    const hotel = await this.prisma.hotel.findFirst({
-      where: {
-        id: hotelId,
-        isActive: true,
-        deletedAt: null,
-      },
-      include: {
-        roomTypes: {
-          where: { isActive: true, deletedAt: null },
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            description: true,
-            maxOccupancy: true,
-            basePriceCents: true,
-            currency: true,
-            bedType: true,
+    const cacheKey = RedisKeys.hotel(hotelId);
+
+    const loader = async () => {
+      const hotel = await this.prisma.hotel.findFirst({
+        where: {
+          id: hotelId,
+          isActive: true,
+          deletedAt: null,
+        },
+        include: {
+          roomTypes: {
+            where: { isActive: true, deletedAt: null },
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              description: true,
+              maxOccupancy: true,
+              basePriceCents: true,
+              currency: true,
+              bedType: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (!hotel) {
-      throw new DomainException(
-        'NOT_FOUND',
-        'Hotel property not found or is currently unavailable.',
-        HttpStatus.NOT_FOUND,
-      );
+      if (!hotel) {
+        throw new DomainException(
+          'NOT_FOUND',
+          'Hotel property not found or is currently unavailable.',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      return hotel;
+    };
+
+    if (this.redisService) {
+      return this.redisService.wrap(cacheKey, loader, REDIS_TTL.MEDIUM);
     }
 
-    return hotel;
+    return loader();
   }
 
   /**

@@ -48,8 +48,24 @@ export class EnvironmentVariables {
 
   @Type(() => Number)
   @IsInt()
+  @Min(1)
+  @Max(65535)
   @IsOptional()
   REDIS_PORT?: number = 6379;
+
+  @IsString()
+  @IsOptional()
+  REDIS_PASSWORD?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  REDIS_DB?: number = 0;
+
+  @IsString()
+  @IsOptional()
+  REDIS_URL?: string;
 
   @IsString()
   @IsOptional()

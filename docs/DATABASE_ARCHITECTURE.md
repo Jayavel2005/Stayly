@@ -3,7 +3,7 @@
 > **Authoritative PostgreSQL Relational Architecture**  
 > **ORM Layer:** Prisma v6.19  
 > **Database Engine:** PostgreSQL 16  
-> **Status:** Phase 12 (Notifications) Complete
+> **Status:** Phase 13 (Redis Infrastructure) Complete
 
 ---
 
@@ -292,6 +292,59 @@ CREATE TABLE notifications (
 ### 8.3 Indexing & Performance Design
 * **`notifications(user_id, is_read)` composite index**: Enables high-efficiency unread count lookups (`SELECT COUNT(*) FROM notifications WHERE user_id = :userId AND is_read = false`) and filtered queries (`isRead=false`).
 * **`notifications(user_id, created_at DESC)` access pattern**: Optimized sorting by newest-first timestamps for paginated customer notification feeds.
+
+---
+
+## 9. Redis Infrastructure & Dual-Tier Data Architecture (Phase 13)
+
+### 9.1 Data Authority Philosophy: PostgreSQL vs. Redis
+In Stayora, data storage is strictly partitioned into **Authoritative State** vs. **Supporting Ephemeral Cache**:
+
+```text
+PostgreSQL 16 (Authoritative Source of Truth)
+   ↓
+   • Bookings & Room Allocations (GiST Exclusion Constraints)
+   • Financial Ledgers, Payments & Idempotency Logs (Row-level Locks)
+   • Room Inventory & Physical Room States
+   • User Accounts, Credentials & Roles
+   • Reviews, Ratings & Notification History
+
+Redis 7 (Supporting Ephemeral Infrastructure)
+   ↓
+   • Low-risk Read Cache (e.g. Public Hotel Discovery Metadata)
+   • Non-authoritative query acceleration
+   • Short-lived coordination tokens
+```
+
+* **No Authoritative State in Redis**: Redis never acts as the primary record for bookings, allocations, balances, payments, or user credentials. If Redis is flushed or destroyed completely, 100% of platform business state is recoverable from PostgreSQL.
+* **Authentication Independence**: JWT authentication remains self-contained (`JwtAuthGuard` + PostgreSQL verify). Redis outages never invalidate active sessions.
+
+### 9.2 Cache-Aside Pattern
+All caching in Stayora follows the explicit **Cache-Aside** architecture:
+
+```text
+Application Client Request
+           ↓
+     Check Redis Cache
+        /        \
+  [Cache Hit]   [Cache Miss / Outage]
+      ↓                  ↓
+ Return Cached     Query PostgreSQL (Authoritative)
+                         ↓
+                   Set Redis Cache (TTL)
+                         ↓
+                    Return Data
+```
+
+### 9.3 Booking & Inventory Correctness Invariant
+* **Non-Authoritative Availability**: Any cached availability or discovery summary is treated as an advisory hint for client exploration.
+* **ACID Re-Verification**: Final room reservation decisions, payment capture, and inventory allocation *never* rely on Redis. Concurrency protection and room holds are executed directly against PostgreSQL inside serializable/repeatable-read transactions with PostgreSQL GiST exclusion constraints (`exclude_overlapping_room_allocations`).
+
+### 9.4 Fault-Tolerance & Degraded Performance Model
+* **Graceful Degradation**: If Redis becomes unreachable (connection drops, network timeouts, OOM), the application does not fail. Operations automatically fall back to direct PostgreSQL queries.
+* **Health Check Contract**: `GET /api/v1/health` reports status `ok` when both PostgreSQL and Redis are responsive. If Redis is down while PostgreSQL is operational, health transitions to `degraded` (`services.redis = "down"`), reflecting operational visibility without dropping traffic.
+* **Corrupt Entry Handling**: Corrupt or malformed JSON cache entries trigger asynchronous cache eviction and transparent fallback to PostgreSQL.
+
 
 
 

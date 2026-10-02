@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import configuration from './config/configuration';
 import { validateEnvironment } from './config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
+import { RedisModule } from './infrastructure/redis/redis.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HotelsModule } from './modules/hotels/hotels.module';
@@ -23,6 +24,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
       envFilePath: ['.env', '.env.local'],
     }),
     PrismaModule,
+    RedisModule,
     HealthModule,
     AuthModule,
     HotelsModule,
