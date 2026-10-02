@@ -1,4 +1,4 @@
-import { Injectable, HttpStatus, Logger } from '@nestjs/common';
+import { Injectable, HttpStatus, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import { HotelAuthorizationService } from '../hotels/authorization/hotel-authorization.service';
@@ -6,6 +6,8 @@ import { AvailabilityService } from '../availability/availability.service';
 import { BookingLifecycleService } from './booking-lifecycle.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/types/notification-type.enum';
+import { RealtimeService } from '../../infrastructure/realtime/realtime.service';
+import { RealtimeEventType } from '../../infrastructure/realtime/realtime.events';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { QueryBookingsDto } from './dto/query-bookings.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
@@ -28,6 +30,7 @@ export class BookingsService {
     private readonly availabilityService: AvailabilityService,
     private readonly lifecycleService: BookingLifecycleService,
     private readonly notificationsService: NotificationsService,
+    @Optional() private readonly realtimeService?: RealtimeService,
   ) {}
 
   /**
@@ -277,6 +280,35 @@ export class BookingsService {
       } catch (notifErr: any) {
         this.logger.warn(
           `[BookingsService] Failed to dispatch booking created notification: ${notifErr.message}`,
+        );
+      }
+
+      // Publish Realtime SSE Event (post-commit)
+      try {
+        if (this.realtimeService) {
+          await this.realtimeService.publish(
+            RealtimeEventType.BOOKING_CREATED,
+            {
+              bookingId: booking.id,
+              bookingReference: booking.bookingReference,
+              hotelId: booking.hotelId,
+              customerId: booking.customerId,
+              status: booking.status,
+              totalAmountCents: booking.priceSnapshot
+                ? Number(booking.priceSnapshot.netAmountCents)
+                : undefined,
+              createdAt: booking.createdAt,
+            },
+            {
+              userId: booking.customerId,
+              hotelId: booking.hotelId,
+              includeAdmins: true,
+            },
+          );
+        }
+      } catch (realtimeErr: any) {
+        this.logger.warn(
+          `[BookingsService] Failed to publish real-time BOOKING_CREATED event: ${realtimeErr.message}`,
         );
       }
 

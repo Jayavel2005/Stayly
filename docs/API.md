@@ -962,6 +962,47 @@ All notification endpoints require authentication with `Authorization: Bearer <J
   }
   ```
 
+---
+
+## 13. Real-Time Events API Specification (Phase 15)
+
+### 13.1 Server-Sent Events (SSE) Stream
+* **Endpoint:** `GET /api/v1/events/stream`
+* **Access:** Authenticated Users (`CUSTOMER`, `HOTEL_MANAGER`, `ADMIN`)
+* **Headers:**
+  - `Authorization: Bearer <JWT>` (Standard HTTP header)
+  - `Accept: text/event-stream`
+* **Query Parameter Alternative:**
+  - `?token=<JWT>` (Supported for browser `EventSource` which lacks custom header capabilities)
+* **Response Content-Type:** `text/event-stream`
+* **Transport Characteristics:**
+  - Unidirectional HTTP persistent stream.
+  - Periodic heartbeat comments/events every 30 seconds (`: heartbeat`) to maintain open socket through reverse proxies.
+  - Reconnection retry hint included with every event (`retry: 5000`).
+* **Event Envelope Structure:**
+  ```text
+  id: <event-uuid>
+  event: <EVENT_TYPE>
+  data: {"id":"<event-uuid>","type":"<EVENT_TYPE>","timestamp":"<ISO8601>","data":{...}}
+  retry: 5000
+  ```
+* **Supported Event Types:**
+  - `BOOKING_CREATED`
+  - `BOOKING_CONFIRMED`
+  - `BOOKING_CANCELLED`
+  - `PAYMENT_COMPLETED`
+  - `PAYMENT_FAILED`
+  - `CHECKED_IN`
+  - `CHECKED_OUT`
+  - `NOTIFICATION_CREATED`
+  - `HEARTBEAT`
+* **Connection Lifecycle & Limits:**
+  - Maximum 5 concurrent connections per authenticated user (`SSE_MAX_CONNECTIONS_PER_USER=5`). When exceeded, the oldest connection is gracefully closed.
+  - On network disconnection, the in-memory registry automatically cleans up active listeners without leaks.
+* **Client Recovery Contract:**
+  - SSE is purely a notification mechanism. On reconnect or missed events, clients must query authoritative REST endpoints (`GET /api/v1/bookings/:id`, `GET /api/v1/notifications`, etc.) to reconcile current state.
+
+
 
 
 

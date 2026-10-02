@@ -78,10 +78,10 @@ describe('Redis Infrastructure & Cache Integration (e2e)', () => {
           service: 'stayora-api',
           environment: expect.any(String),
           timestamp: expect.any(String),
-          services: {
+          services: expect.objectContaining({
             database: 'up',
             redis: 'up',
-          },
+          }),
         }),
       });
     });

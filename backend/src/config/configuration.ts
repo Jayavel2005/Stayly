@@ -18,6 +18,10 @@ export interface AppConfig {
   cors: {
     origins: string[];
   };
+  realtime: {
+    heartbeatIntervalMs: number;
+    maxConnectionsPerUser: number;
+  };
 }
 
 export default (): AppConfig => {
@@ -49,6 +53,16 @@ export default (): AppConfig => {
     },
     cors: {
       origins,
+    },
+    realtime: {
+      heartbeatIntervalMs: parseInt(
+        process.env.SSE_HEARTBEAT_INTERVAL_MS || '30000',
+        10,
+      ),
+      maxConnectionsPerUser: parseInt(
+        process.env.SSE_MAX_CONNECTIONS_PER_USER || '5',
+        10,
+      ),
     },
   };
 };

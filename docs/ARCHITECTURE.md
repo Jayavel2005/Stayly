@@ -1,9 +1,9 @@
 # Stayora Backend — System Architecture
 
-> **Version:** 1.0.0 (Phase 13: Redis Infrastructure)  
+> **Version:** 1.0.0 (Phase 14: BullMQ Background Jobs & Async Processing)  
 > **Backend Framework:** NestJS with TypeScript  
 > **Database:** PostgreSQL 16 (Authoritative Source of Truth)  
-> **Cache & Coordination:** Redis 7 (Non-Authoritative Ephemeral Infrastructure)  
+> **Cache & Queues:** Redis 7 + BullMQ (Non-Authoritative Ephemeral Infrastructure)  
 > **Authentication:** Stateless JWT with Role-Based Access Control (RBAC)  
 
 ---
@@ -126,3 +126,72 @@ JWT validation does not depend on Redis:
 * Each request passes through `JwtAuthGuard`, validating signature and expiry statelessly.
 * Database user state is verified via `JwtStrategy` directly against PostgreSQL.
 * Redis outages do not disrupt authentication or authorize invalid tokens.
+
+---
+
+## 6. BullMQ Background Processing Infrastructure
+
+Phase 14 introduces asynchronous background job execution using BullMQ 5.x on Redis 7.
+
+### 6.1 Architectural Boundary & Responsibilities
+* **Critical Path**: All financial transactions, booking holds, room inventory changes, and cancellations execute strictly in synchronous PostgreSQL ACID transactions.
+* **Asynchronous Secondary Tasks**: Notification creation, manager fan-out, and operational sweeps execute asynchronously via BullMQ workers.
+
+```text
+                    ┌─────────────────────┐
+                    │     PostgreSQL      │
+                    │  Source of Truth    │
+                    └──────────┬──────────┘
+                               │
+                         NestJS Services
+                               │
+                ┌──────────────┴──────────────┐
+                │                             │
+          Synchronous                  Domain Events
+          Operations                         │
+                │                             │
+                │                    ┌────────┴─────────┐
+                │                    │                  │
+                │               Notification       Future SSE
+                │                  Job             (Phase 15)
+                │                    │
+                │                    ▼
+                │              ┌───────────┐
+                │              │  BullMQ   │
+                │              └─────┬─────┘
+                │                    │
+                │                    ▼
+                │              Worker Process
+                │                    │
+                │                    ▼
+                │              PostgreSQL
+                │
+                └──────────────────────────────
+```
+
+### 6.2 Multi-Tier Idempotency
+* **Queue-Level**: Deterministic `jobId` derived as `notif-{userId}-{type}-{idempotencyKey}` prevents duplicate enqueueing during transient retries.
+* **Database-Level**: Worker queries PostgreSQL for existing notifications matching `metadata.idempotencyKey` before inserting records, ensuring strict at-least-once safety.
+
+### 6.3 Operational Cleanup Sweeps
+* BullMQ repeatable job (`upsertJobScheduler`) executes every 60 seconds.
+* `BookingLifecycleService.expireStalePendingBookings()` runs against PostgreSQL (`holdExpiresAt < NOW()`).
+* Database remains the sole authority for identifying and expiring stale holds.
+
+---
+
+## 7. Operational Health & Graceful Shutdown
+
+* **Health Endpoint (`GET /api/v1/health`)**: Aggregates `database`, `redis`, and `queues` statuses. Queue failure reports `status: "degraded"` while keeping primary booking APIs fully operational.
+* **Graceful Shutdown**: On `SIGTERM`/`SIGINT`, workers stop accepting jobs, active jobs finish processing, worker connections close, queue producers close, and Redis connections terminate cleanly.
+
+---
+
+## 8. Real-Time Events (Server-Sent Events)
+
+* **SSE Stream (`GET /api/v1/events/stream`)**: Authenticated unidirectional event delivery channel.
+* **Strict Post-Commit Emission**: Events are only dispatched following successful PostgreSQL transaction commit.
+* **Tenant Isolation**: Customer events are scoped strictly to `userId`; property events are delivered strictly to assigned managers (`HotelManager` mapping); operational events conform to an admin policy allowlist.
+* **REST Recovery Model**: SSE serves as a notification signal; PostgreSQL + REST endpoints remain the authoritative source of truth. See [REALTIME.md](file:///home/jayavel/Desktop/Stayly/docs/REALTIME.md) for full details.
+
+

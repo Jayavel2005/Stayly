@@ -17,6 +17,13 @@
     "build:manager": "npm --prefix apps/manager-web run build",
     "build:customer": "npm --prefix apps/customer-web run build",
     "preview": "npm --prefix apps/admin-web run preview"
+    "dev": "npm --prefix apps/customer-web run dev",
+    "dev:customer": "npm --prefix apps/customer-web run dev",
+    "dev:manager": "npm --prefix apps/manager-web run dev",
+    "build": "npm --prefix apps/customer-web run build",
+    "build:customer": "npm --prefix apps/customer-web run build",
+    "build:manager": "npm --prefix apps/manager-web run build",
+    "preview": "npm --prefix apps/customer-web run preview"
   },
   "devDependencies": {}
 }

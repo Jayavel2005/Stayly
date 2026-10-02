@@ -3,6 +3,7 @@ import {
   Inject,
   HttpStatus,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -28,6 +29,8 @@ import {
 import type { PaymentGateway } from './gateways/payment-gateway.interface';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/types/notification-type.enum';
+import { RealtimeService } from '../../infrastructure/realtime/realtime.service';
+import { RealtimeEventType } from '../../infrastructure/realtime/realtime.events';
 
 @Injectable()
 export class PaymentsService {
@@ -37,6 +40,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway,
     private readonly notificationsService: NotificationsService,
+    @Optional() private readonly realtimeService?: RealtimeService,
   ) {}
 
   /**
@@ -615,6 +619,46 @@ export class PaymentsService {
       } catch (notifErr: any) {
         this.logger.warn(`Failed to dispatch payment success notifications: ${notifErr.message}`);
       }
+
+      // Publish Realtime SSE Events (post-commit)
+      try {
+        if (this.realtimeService) {
+          await this.realtimeService.publish(
+            RealtimeEventType.PAYMENT_COMPLETED,
+            {
+              paymentId: finalPayment.id,
+              bookingId: booking.id,
+              status: 'COMPLETED',
+              amountCents: Number(finalPayment.amountCents),
+              currency: finalPayment.currency,
+            },
+            {
+              userId: booking.customerId,
+              includeAdmins: true,
+            },
+          );
+
+          await this.realtimeService.publish(
+            RealtimeEventType.BOOKING_CONFIRMED,
+            {
+              bookingId: booking.id,
+              bookingReference: booking.bookingReference,
+              hotelId: booking.hotelId,
+              customerId: booking.customerId,
+              status: 'CONFIRMED',
+            },
+            {
+              userId: booking.customerId,
+              hotelId: booking.hotelId,
+              includeAdmins: true,
+            },
+          );
+        }
+      } catch (realtimeErr: any) {
+        this.logger.warn(
+          `Failed to publish real-time payment success events: ${realtimeErr.message}`,
+        );
+      }
     } else if (finalPayment.status === PaymentStatus.FAILED) {
       try {
         await this.notificationsService.create({
@@ -630,6 +674,29 @@ export class PaymentsService {
         });
       } catch (notifErr: any) {
         this.logger.warn(`Failed to dispatch payment failed notification: ${notifErr.message}`);
+      }
+
+      // Publish Realtime SSE Event (post-commit)
+      try {
+        if (this.realtimeService) {
+          await this.realtimeService.publish(
+            RealtimeEventType.PAYMENT_FAILED,
+            {
+              paymentId: finalPayment.id,
+              bookingId: booking.id,
+              status: 'FAILED',
+              failureReason: finalPayment.failureReason || 'Declined',
+            },
+            {
+              userId: booking.customerId,
+              includeAdmins: true,
+            },
+          );
+        }
+      } catch (realtimeErr: any) {
+        this.logger.warn(
+          `Failed to publish real-time PAYMENT_FAILED event: ${realtimeErr.message}`,
+        );
       }
     }
 
