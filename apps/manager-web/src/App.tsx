@@ -32,7 +32,11 @@ const queryClient = new QueryClient({
 });
 
 export const App: React.FC = () => {
-  const { activeTab, setActiveTab, theme } = useManagerStore();
+  const { activeTab, setActiveTab } = useManagerStore();
+
+  React.useEffect(() => {
+    document.documentElement.classList.remove('dark');
+  }, []);
 
   const renderActiveView = () => {
     switch (activeTab) {
@@ -57,19 +61,21 @@ export const App: React.FC = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen bg-background text-foreground flex flex-col font-sans transition-colors duration-200">
+      <div className="h-screen flex flex-col bg-background text-foreground font-sans transition-colors duration-200 overflow-hidden">
         {/* Top Header */}
         <AppHeader />
 
-        <div className="flex flex-1 min-h-[calc(100vh-4rem)]">
+        <div className="flex flex-1 overflow-hidden">
           {/* Desktop & Tablet Sidebar */}
-          <div className="hidden md:block">
+          <div className="hidden md:flex shrink-0 h-full">
             <AppSidebar />
           </div>
 
           {/* Main Viewport Container */}
-          <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full pb-20 md:pb-8">
-            {renderActiveView()}
+          <main className="flex-1 h-full overflow-y-auto overflow-x-hidden">
+            <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full pb-20 md:pb-8">
+              {renderActiveView()}
+            </div>
           </main>
         </div>
 
@@ -133,7 +139,7 @@ export const App: React.FC = () => {
         {/* Sonner Accessible Toast Alerts */}
         <Toaster
           position="top-right"
-          theme={theme === 'dark' ? 'dark' : 'light'}
+          theme="light"
           richColors
           closeButton
         />

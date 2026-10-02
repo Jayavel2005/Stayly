@@ -4,8 +4,6 @@ import {
   ChevronDown,
   Search,
   Bell,
-  Sun,
-  Moon,
   CheckCheck,
   AlertCircle,
   CalendarCheck,
@@ -23,8 +21,6 @@ export const AppHeader: React.FC = () => {
     currentHotelId,
     setCurrentHotelId,
     hotels,
-    theme,
-    toggleTheme,
     notifications,
     markNotificationAsRead,
     markAllNotificationsAsRead,
@@ -88,7 +84,7 @@ export const AppHeader: React.FC = () => {
   };
 
   return (
-    <header className="sticky top-0 z-30 h-16 w-full border-b border-border bg-card/95 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between transition-colors">
+    <header className="sticky top-0 z-30 h-16 w-full shrink-0 border-b border-border bg-card/95 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between transition-colors">
       {/* Left: Property Switcher & Shift Status */}
       <div className="flex items-center gap-4">
         {/* Mobile Logo Monogram */}
@@ -212,20 +208,6 @@ export const AppHeader: React.FC = () => {
           <Search size={18} />
         </button>
 
-        {/* Theme Toggle */}
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
-        >
-          {theme === 'light' ? (
-            <Moon size={18} className="text-neutral-700" />
-          ) : (
-            <Sun size={18} className="text-amber-400" />
-          )}
-        </button>
-
         {/* Notification Bell Dropdown */}
         <div className="relative" ref={notifDropdownRef}>
           <button
@@ -235,11 +217,9 @@ export const AppHeader: React.FC = () => {
             aria-label="Notifications"
           >
             <Bell size={18} />
-            {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[10px] font-bold text-white shadow-sm ring-2 ring-card animate-pulse">
-                {unreadCount}
-              </span>
-            )}
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-rose-600 text-[10px] font-bold text-white shadow-sm ring-2 ring-card">
+              2
+            </span>
           </button>
 
           {isNotificationsOpen && (
