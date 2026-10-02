@@ -342,7 +342,7 @@ const AppContent: React.FC = () => {
       )}
 
       {/* Main View Switcher */}
-      <main className="flex-1 container mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 container mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-12">
         {/* VIEW: LOGIN PAGE */}
         {currentView === 'login' && (
           <LoginPage
@@ -363,9 +363,9 @@ const AppContent: React.FC = () => {
 
         {/* VIEW 1: SEARCH & DISCOVERY */}
         {currentView === 'search' && (
-          <div className="space-y-10">
-            {/* Luxury Hero Banner per Design System lines 276 & 319 */}
-            <div className="relative rounded-3xl overflow-hidden bg-brand-950 text-white p-8 sm:p-12 md:p-16 shadow-xl border border-border/20">
+          <div className="space-y-6">
+            {/* Initial Luxury Hero Banner per Design System */}
+            <div className="relative rounded-2xl overflow-hidden bg-brand-950 text-white p-6 sm:p-8 md:p-10 shadow-lg border border-border/20">
               <div
                 className="absolute inset-0 bg-cover bg-center opacity-30 mix-blend-overlay"
                 style={{
@@ -375,28 +375,28 @@ const AppContent: React.FC = () => {
               />
               <div className="absolute inset-0 bg-gradient-to-r from-brand-950 via-brand-950/80 to-transparent" />
 
-              <div className="relative z-10 max-w-2xl space-y-4">
+              <div className="relative z-10 max-w-2xl space-y-3 sm:space-y-4">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono font-medium tracking-wide bg-brand-500/20 text-brand-200 border border-brand-400/30 backdrop-blur-xs">
                   <Sparkles size={13} className="text-brand-300" />
                   <span>Verified Hospitality Sanctuaries</span>
                 </div>
 
-                <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold font-serif tracking-tight leading-tight">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold font-serif tracking-tight leading-tight">
                   Where Sanctuary Meets Precision
                 </h1>
 
-                <p className="text-sm sm:text-base text-neutral-300 leading-relaxed max-w-xl">
+                <p className="text-xs sm:text-sm md:text-base text-neutral-300 leading-relaxed max-w-xl">
                   Discover peerless luxury resorts, heritage palaces, and coastal retreats across India. Enjoy guaranteed reservations with atomic room holds and zero deceptive fees.
                 </p>
 
                 {/* Popular Quick Destinations Chips */}
-                <div className="pt-2 flex items-center gap-2 flex-wrap text-xs">
+                <div className="pt-1 flex items-center gap-2 flex-wrap text-xs">
                   <span className="text-neutral-400 font-mono text-[11px]">Popular:</span>
                   {['Chennai', 'Mumbai', 'Udaipur', 'Goa', 'Bengaluru', 'Jaipur'].map((cityName) => (
                     <button
                       key={cityName}
                       onClick={() => handleFilterChange({ city: cityName })}
-                      className={`px-3 py-1 rounded-full transition-all border ${
+                      className={`px-2.5 py-0.5 rounded-full transition-all border text-xs font-medium cursor-pointer ${
                         filters.city.toLowerCase() === cityName.toLowerCase()
                           ? 'bg-white text-brand-950 font-bold border-white'
                           : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
@@ -409,8 +409,8 @@ const AppContent: React.FC = () => {
               </div>
             </div>
 
-            {/* Prominent Search Widget Strip */}
-            <div className="-mt-8 sm:-mt-12 relative z-20">
+            {/* Compact Filters / Search Bar - Sticky below Navbar with ZERO GAP */}
+            <div className="sticky top-16 z-20 w-full bg-background/98 backdrop-blur-md py-2 border-b border-border/70 shadow-xs -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
               <SearchWidget
                 filters={filters}
                 onSearch={(updated) => handleFilterChange(updated)}
@@ -418,8 +418,8 @@ const AppContent: React.FC = () => {
             </div>
 
             {/* Split Content: Filters Sidebar (Col 1-3) & Hotel List (Col 4-12) */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start pt-4">
-              <div className="hidden lg:block lg:col-span-3 sticky top-22">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start pt-1">
+              <div className="hidden lg:block lg:col-span-3 sticky top-[124px] z-10 self-start max-h-[calc(100vh-136px)] overflow-y-auto pr-1">
                 <FilterSidebar
                   filters={filters}
                   onChange={handleFilterChange}

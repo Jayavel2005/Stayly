@@ -1,5 +1,5 @@
-import React from 'react';
-import { ArrowUpDown, X, BedDouble } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowUpDown, X, BedDouble, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Hotel, SearchFilterState } from '../../types';
 import { HotelCard } from './HotelCard';
 import { Skeleton } from '../../components/ui/Skeleton';
@@ -22,8 +22,53 @@ export const HotelList: React.FC<HotelListProps> = ({
   onResetFilters,
   onSelectHotel,
 }) => {
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(3);
+  const listTopRef = useRef<HTMLDivElement>(null);
+
+  // Reset to page 1 whenever filters or hotel list changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [hotels.length, filters.sortBy, filters.city, filters.starRatings.length, filters.freeCancellationOnly, filters.breakfastIncludedOnly]);
+
+  // Pagination Calculations
+  const totalItems = hotels.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const activePage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (activePage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+  const paginatedHotels = hotels.slice(startIndex, endIndex);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > totalPages || newPage === activePage) return;
+    setCurrentPage(newPage);
+    if (listTopRef.current) {
+      listTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  // Helper to generate numbered page array with ellipsis if many pages
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (activePage <= 3) {
+        pages.push(1, 2, 3, 4, '...', totalPages);
+      } else if (activePage >= totalPages - 2) {
+        pages.push(1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+      } else {
+        pages.push(1, '...', activePage - 1, activePage, activePage + 1, '...', totalPages);
+      }
+    }
+    return pages;
+  };
+
   return (
-    <div className="space-y-4">
+    <div ref={listTopRef} className="space-y-4">
       {/* Header bar: Result counts & Sorting */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
         <div>
@@ -34,7 +79,8 @@ export const HotelList: React.FC<HotelListProps> = ({
               <>
                 Available Sanctuaries{' '}
                 <span className="text-sm font-normal text-muted-foreground font-sans">
-                  ({hotels.length} {hotels.length === 1 ? 'property' : 'properties'} found)
+                  ({totalItems} {totalItems === 1 ? 'property' : 'properties'} found
+                  {totalPages > 1 && totalItems > 0 ? ` • Page ${activePage} of ${totalPages}` : ''})
                 </span>
               </>
             )}
@@ -161,7 +207,7 @@ export const HotelList: React.FC<HotelListProps> = ({
       )}
 
       {/* Empty State */}
-      {!isLoading && hotels.length === 0 && (
+      {!isLoading && totalItems === 0 && (
         <EmptyState
           icon={<BedDouble className="w-12 h-12 text-muted-foreground stroke-[1.5]" />}
           title="No sanctuary retreats found"
@@ -172,9 +218,9 @@ export const HotelList: React.FC<HotelListProps> = ({
       )}
 
       {/* Loaded Hotel Cards List */}
-      {!isLoading && hotels.length > 0 && (
+      {!isLoading && totalItems > 0 && (
         <div className="space-y-5">
-          {hotels.map((hotel) => (
+          {paginatedHotels.map((hotel) => (
             <HotelCard
               key={hotel.id}
               hotel={hotel}
@@ -185,6 +231,98 @@ export const HotelList: React.FC<HotelListProps> = ({
           ))}
         </div>
       )}
+
+      {/* Pagination Controls Footer */}
+      {!isLoading && totalItems > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-border mt-6">
+          {/* Information & Per-page selector */}
+          <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+            <span>
+              Showing{' '}
+              <span className="font-semibold text-foreground">
+                {startIndex + 1}–{endIndex}
+              </span>{' '}
+              of{' '}
+              <span className="font-semibold text-foreground">{totalItems}</span>{' '}
+              sanctuaries
+            </span>
+
+            {totalItems > 3 && (
+              <div className="flex items-center gap-1.5 pl-3 border-l border-border">
+                <span>Show:</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="bg-card border border-border rounded-md px-2 py-1 text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                  aria-label="Sanctuaries per page"
+                >
+                  <option value={3}>3 per page</option>
+                  <option value={6}>6 per page</option>
+                  <option value={12}>12 per page</option>
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <nav
+              aria-label="Hotel listings pagination"
+              className="flex items-center gap-1.5 select-none"
+            >
+              <button
+                onClick={() => handlePageChange(activePage - 1)}
+                disabled={activePage === 1}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-card text-foreground hover:bg-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-2xs cursor-pointer"
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={14} />
+                <span>Previous</span>
+              </button>
+
+              <div className="flex items-center gap-1">
+                {getPageNumbers().map((page, idx) =>
+                  typeof page === 'number' ? (
+                    <button
+                      key={idx}
+                      onClick={() => handlePageChange(page)}
+                      className={`min-w-[32px] h-8 px-2 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center cursor-pointer ${
+                        page === activePage
+                          ? 'bg-primary text-primary-foreground shadow-xs font-bold'
+                          : 'bg-card border border-border text-foreground hover:bg-secondary'
+                      }`}
+                      aria-current={page === activePage ? 'page' : undefined}
+                    >
+                      {page}
+                    </button>
+                  ) : (
+                    <span
+                      key={idx}
+                      className="px-1 text-xs text-muted-foreground select-none"
+                    >
+                      …
+                    </span>
+                  )
+                )}
+              </div>
+
+              <button
+                onClick={() => handlePageChange(activePage + 1)}
+                disabled={activePage === totalPages}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-card text-foreground hover:bg-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-2xs cursor-pointer"
+                aria-label="Next page"
+              >
+                <span>Next</span>
+                <ChevronRight size={14} />
+              </button>
+            </nav>
+          )}
+        </div>
+      )}
     </div>
   );
 };
+
