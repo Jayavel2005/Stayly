@@ -43,11 +43,12 @@ Every HTTP error response emitted by the Stayora API adheres to the following un
 | HTTP Status | Error Code | Description / Trigger Scenario | Client Remediation |
 | :--- | :--- | :--- | :--- |
 | `401 Unauthorized` | `UNAUTHORIZED` | Bearer token is missing, expired, invalid, or malformed in `Authorization` header. | Redirect user to relevant login portal; refresh token if available. |
+| `401 Unauthorized` | `INVALID_TOKEN` | Bearer token signature is invalid, corrupted, or has expired. | Re-authenticate to obtain fresh token. |
 | `401 Unauthorized` | `AUTH_INVALID_CREDENTIALS` | Incorrect email or password entered during customer, manager, or admin login. | Prompt user to verify credentials. |
 | `403 Forbidden` | `AUTH_ACCOUNT_DISABLED` | Account has been deactivated or disabled by an administrator. | Inform user their account has been disabled. |
 | `403 Forbidden` | `AUTH_ACCOUNT_SUSPENDED` | Account has been temporarily suspended due to security or policy violations. | Display suspension notice. |
 | `403 Forbidden` | `AUTH_ROLE_MISMATCH` | Authenticated user role is incompatible with target portal (e.g. customer attempting manager portal). | Direct user to their authorized portal. |
-| `409 Conflict` | `AUTH_EMAIL_EXISTS` | Registration attempted with an email address that is already registered. | Prompt user to log in or use password recovery. |
+| `409 Conflict` | `AUTH_EMAIL_EXISTS` / `EMAIL_ALREADY_REGISTERED` | Registration attempted with an email address that is already registered. | Prompt user to log in or use password recovery. |
 | `403 Forbidden` | `FORBIDDEN` | Authenticated user lacks required RBAC role or resource-level tenancy ownership. | Display unauthorized access banner. |
 
 ---
@@ -107,6 +108,9 @@ Every HTTP error response emitted by the Stayora API adheres to the following un
 | :--- | :--- | :--- | :--- |
 | `404 Not Found` | `BOOKING_NOT_FOUND` | Reservation with the specified UUID does not exist or access was denied (IDOR protection). | Verify booking ID or user ownership. |
 | `400 Bad Request` | `BOOKING_ALREADY_CANCELLED`| Cancellation attempted on a reservation that is already `CANCELLED`. | Safe no-op; show cancelled status. |
+| `400 Bad Request` | `CAPACITY_EXCEEDED` | Number of guests exceeds room category maximum occupancy. | Select a larger category or reduce guest count. |
+| `400 Bad Request` | `HOTEL_ROOM_TYPE_MISMATCH` | Specified room category does not belong to the requested hotel property. | Select a category belonging to the hotel. |
+| `400 Bad Request` | `INVALID_STATE_TRANSITION` | Requested state change is invalid in the domain lifecycle. | Follow valid lifecycle sequence. |
 | `400 Bad Request` | `BOOKING_NOT_CANCELLABLE` | Cancellation attempted on `CHECKED_IN`, `CHECKED_OUT`, or past reservation. | Contact hotel staff. |
 | `400 Bad Request` | `BOOKING_INVALID_STATE` | Lifecycle transition does not follow the state machine (`PENDING -> CONFIRMED -> CHECKED_IN -> CHECKED_OUT`). | Review current status. |
 | `400 Bad Request` | `BOOKING_NOT_CHECK_IN_ELIGIBLE`| Check-in attempted for a reservation that is not `CONFIRMED`. | Complete payment first. |
@@ -122,7 +126,7 @@ Every HTTP error response emitted by the Stayora API adheres to the following un
 | `404 Not Found` | `PAYMENT_NOT_FOUND` | Payment record does not exist. | Verify payment ID. |
 | `400 Bad Request` | `PAYMENT_NOT_PAYABLE` | Booking is not in `PENDING` status or is already expired/cancelled. | Check booking state. |
 | `409 Conflict` | `PAYMENT_ALREADY_COMPLETED`| Payment was already settled for this reservation. | Direct customer to confirmed booking. |
-| `409 Conflict` | `IDEMPOTENCY_CONFLICT` | Same `Idempotency-Key` submitted for a different booking or with conflicting parameters. | Generate a fresh UUID v4 key for distinct operations. |
+| `409 Conflict` | `IDEMPOTENCY_CONFLICT` / `IDEMPOTENCY_KEY_REUSED` | Same `Idempotency-Key` submitted for a different booking or with conflicting parameters. | Generate a fresh UUID v4 key for distinct operations. |
 | `409 Conflict` | `PAYMENT_IN_PROGRESS` | Another payment attempt is currently settling for this reservation. | Await response or poll status. |
 | `402 Payment Req` | `PAYMENT_FAILED` | Gateway transaction declined or insufficient mock funds. | Prompt customer to retry payment. |
 
