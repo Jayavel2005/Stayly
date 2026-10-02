@@ -1,4 +1,4 @@
-import { Injectable, HttpStatus, Logger } from '@nestjs/common';
+import { Injectable, HttpStatus, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import { HotelAuthorizationService } from '../hotels/authorization/hotel-authorization.service';
@@ -8,6 +8,8 @@ import { BookingStatus, BookingRoomStatus } from './types/booking-status.enum';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { UserRole } from '../auth/types/user-role.enum';
 import { BookingResponse } from './types/booking-response.type';
+import { RealtimeService } from '../../infrastructure/realtime/realtime.service';
+import { RealtimeEventType } from '../../infrastructure/realtime/realtime.events';
 
 @Injectable()
 export class BookingLifecycleService {
@@ -47,6 +49,7 @@ export class BookingLifecycleService {
     private readonly prisma: PrismaService,
     private readonly hotelAuthorizationService: HotelAuthorizationService,
     private readonly notificationsService: NotificationsService,
+    @Optional() private readonly realtimeService?: RealtimeService,
   ) {}
 
   /**
@@ -267,6 +270,32 @@ export class BookingLifecycleService {
       this.logger.warn(`Failed to dispatch booking cancelled notification: ${notifErr.message}`);
     }
 
+    // Publish Realtime SSE Event (post-commit)
+    try {
+      if (this.realtimeService) {
+        await this.realtimeService.publish(
+          RealtimeEventType.BOOKING_CANCELLED,
+          {
+            bookingId: updatedBooking.id,
+            bookingReference: updatedBooking.bookingReference,
+            hotelId: updatedBooking.hotelId,
+            customerId: updatedBooking.customerId,
+            status: updatedBooking.status,
+            reason,
+          },
+          {
+            userId: updatedBooking.customerId,
+            hotelId: updatedBooking.hotelId,
+            includeAdmins: true,
+          },
+        );
+      }
+    } catch (realtimeErr: any) {
+      this.logger.warn(
+        `Failed to publish real-time BOOKING_CANCELLED event: ${realtimeErr.message}`,
+      );
+    }
+
     return this.mapToBookingResponse(updatedBooking, 'Booking cancelled successfully.');
   }
 
@@ -471,6 +500,31 @@ export class BookingLifecycleService {
       this.logger.warn(`Failed to dispatch check-in notification: ${notifErr.message}`);
     }
 
+    // Publish Realtime SSE Event (post-commit)
+    try {
+      if (this.realtimeService) {
+        await this.realtimeService.publish(
+          RealtimeEventType.CHECKED_IN,
+          {
+            bookingId: updatedBooking.id,
+            bookingReference: updatedBooking.bookingReference,
+            hotelId: updatedBooking.hotelId,
+            customerId: updatedBooking.customerId,
+            status: updatedBooking.status,
+          },
+          {
+            userId: updatedBooking.customerId,
+            hotelId: updatedBooking.hotelId,
+            includeAdmins: true,
+          },
+        );
+      }
+    } catch (realtimeErr: any) {
+      this.logger.warn(
+        `Failed to publish real-time CHECKED_IN event: ${realtimeErr.message}`,
+      );
+    }
+
     return this.mapToBookingResponse(updatedBooking, 'Booking checked in successfully.');
   }
 
@@ -639,6 +693,31 @@ export class BookingLifecycleService {
       });
     } catch (notifErr: any) {
       this.logger.warn(`Failed to dispatch check-out notification: ${notifErr.message}`);
+    }
+
+    // Publish Realtime SSE Event (post-commit)
+    try {
+      if (this.realtimeService) {
+        await this.realtimeService.publish(
+          RealtimeEventType.CHECKED_OUT,
+          {
+            bookingId: updatedBooking.id,
+            bookingReference: updatedBooking.bookingReference,
+            hotelId: updatedBooking.hotelId,
+            customerId: updatedBooking.customerId,
+            status: updatedBooking.status,
+          },
+          {
+            userId: updatedBooking.customerId,
+            hotelId: updatedBooking.hotelId,
+            includeAdmins: true,
+          },
+        );
+      }
+    } catch (realtimeErr: any) {
+      this.logger.warn(
+        `Failed to publish real-time CHECKED_OUT event: ${realtimeErr.message}`,
+      );
     }
 
     return this.mapToBookingResponse(updatedBooking, 'Booking checked out successfully.');

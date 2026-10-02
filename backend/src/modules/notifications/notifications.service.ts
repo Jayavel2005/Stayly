@@ -11,6 +11,8 @@ import {
 } from './types/notification-response.type';
 import { QueueService } from '../../infrastructure/queues/queue.service';
 import { NotificationJobName } from '../../infrastructure/queues/queue.types';
+import { RealtimeService } from '../../infrastructure/realtime/realtime.service';
+import { RealtimeEventType } from '../../infrastructure/realtime/realtime.events';
 
 @Injectable()
 export class NotificationsService {
@@ -19,6 +21,7 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly queueService?: QueueService,
+    @Optional() private readonly realtimeService?: RealtimeService,
   ) {}
 
   /**
@@ -89,6 +92,26 @@ export class NotificationsService {
       this.logger.log(
         `[NotificationsService] Notification ${notification.id} created for user ${payload.userId} [${payload.type}]`,
       );
+
+      // Publish Realtime SSE Event
+      if (this.realtimeService) {
+        this.realtimeService
+          .publish(
+            RealtimeEventType.NOTIFICATION_CREATED,
+            {
+              notificationId: notification.id,
+              userId: notification.userId,
+              type: notification.type,
+              title: notification.title,
+              message: notification.message,
+              createdAt: notification.createdAt.toISOString(),
+            },
+            {
+              userId: notification.userId,
+            },
+          )
+          .catch(() => {});
+      }
 
       return this.mapToNotificationResponse(notification);
     } catch (error: any) {

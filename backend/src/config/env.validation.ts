@@ -71,6 +71,19 @@ export class EnvironmentVariables {
   @IsOptional()
   CORS_ORIGINS?: string =
     'http://localhost:3000,http://localhost:3001,http://localhost:3002';
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1000)
+  @IsOptional()
+  SSE_HEARTBEAT_INTERVAL_MS?: number = 30000;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  @IsOptional()
+  SSE_MAX_CONNECTIONS_PER_USER?: number = 5;
 }
 
 export function validateEnvironment(

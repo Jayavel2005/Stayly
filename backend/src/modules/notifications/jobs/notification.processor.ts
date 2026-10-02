@@ -3,6 +3,7 @@ import {
   Logger,
   OnModuleInit,
   OnApplicationShutdown,
+  Optional,
 } from '@nestjs/common';
 import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { Prisma } from '@prisma/client';
@@ -14,6 +15,8 @@ import {
   FanoutHotelManagersJobPayload,
 } from '../../../infrastructure/queues/queue.types';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { RealtimeService } from '../../../infrastructure/realtime/realtime.service';
+import { RealtimeEventType } from '../../../infrastructure/realtime/realtime.events';
 
 @Injectable()
 export class NotificationProcessor implements OnModuleInit, OnApplicationShutdown {
@@ -23,6 +26,7 @@ export class NotificationProcessor implements OnModuleInit, OnApplicationShutdow
   constructor(
     private readonly queueService: QueueService,
     private readonly prisma: PrismaService,
+    @Optional() private readonly realtimeService?: RealtimeService,
   ) {}
 
   onModuleInit(): void {
@@ -146,6 +150,28 @@ export class NotificationProcessor implements OnModuleInit, OnApplicationShutdow
       `[NotificationWorker] Notification ${notification.id} created for user ${userId} [${type}] in ${durationMs}ms.`,
     );
 
+    // Publish Realtime SSE Event
+    if (this.realtimeService) {
+      this.realtimeService
+        .publish(
+          RealtimeEventType.NOTIFICATION_CREATED,
+          {
+            notificationId: notification.id,
+            userId: notification.userId,
+            type: notification.type,
+            title: notification.title,
+            message: notification.message,
+            createdAt: notification.createdAt.toISOString(),
+          },
+          {
+            userId: notification.userId,
+          },
+        )
+        .catch((err) => {
+          this.logger.warn(`Failed to emit NOTIFICATION_CREATED event: ${err.message}`);
+        });
+    }
+
     return { notificationId: notification.id, status: 'created' };
   }
 
@@ -207,7 +233,7 @@ export class NotificationProcessor implements OnModuleInit, OnApplicationShutdow
         ...(eventId && { eventId }),
       };
 
-      await this.prisma.notification.create({
+      const notif = await this.prisma.notification.create({
         data: {
           userId: assignment.userId,
           type,
@@ -218,6 +244,25 @@ export class NotificationProcessor implements OnModuleInit, OnApplicationShutdow
         },
       });
       dispatchedCount++;
+
+      if (this.realtimeService) {
+        this.realtimeService
+          .publish(
+            RealtimeEventType.NOTIFICATION_CREATED,
+            {
+              notificationId: notif.id,
+              userId: assignment.userId,
+              type,
+              title,
+              message,
+              createdAt: notif.createdAt.toISOString(),
+            },
+            {
+              userId: assignment.userId,
+            },
+          )
+          .catch(() => {});
+      }
     }
 
     const durationMs = Date.now() - startTime;

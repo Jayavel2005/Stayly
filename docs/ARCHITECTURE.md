@@ -185,3 +185,13 @@ Phase 14 introduces asynchronous background job execution using BullMQ 5.x on Re
 * **Health Endpoint (`GET /api/v1/health`)**: Aggregates `database`, `redis`, and `queues` statuses. Queue failure reports `status: "degraded"` while keeping primary booking APIs fully operational.
 * **Graceful Shutdown**: On `SIGTERM`/`SIGINT`, workers stop accepting jobs, active jobs finish processing, worker connections close, queue producers close, and Redis connections terminate cleanly.
 
+---
+
+## 8. Real-Time Events (Server-Sent Events)
+
+* **SSE Stream (`GET /api/v1/events/stream`)**: Authenticated unidirectional event delivery channel.
+* **Strict Post-Commit Emission**: Events are only dispatched following successful PostgreSQL transaction commit.
+* **Tenant Isolation**: Customer events are scoped strictly to `userId`; property events are delivered strictly to assigned managers (`HotelManager` mapping); operational events conform to an admin policy allowlist.
+* **REST Recovery Model**: SSE serves as a notification signal; PostgreSQL + REST endpoints remain the authoritative source of truth. See [REALTIME.md](file:///home/jayavel/Desktop/Stayly/docs/REALTIME.md) for full details.
+
+

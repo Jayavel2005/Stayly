@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   CallHandler,
 } from '@nestjs/common';
+import { SSE_METADATA } from '@nestjs/common/constants';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { ApiSuccessResponse } from '../types/api-response.type';
@@ -44,6 +45,12 @@ export class TransformInterceptor<T> implements NestInterceptor<
     context: ExecutionContext,
     next: CallHandler<T>,
   ): Observable<ApiSuccessResponse<T> | T> {
+    // Bypass transformation for Server-Sent Events (SSE) stream endpoints
+    const isSse = Reflect.getMetadata(SSE_METADATA, context.getHandler());
+    if (isSse) {
+      return next.handle();
+    }
+
     return next.handle().pipe(
       map((data: T): ApiSuccessResponse<T> | T => {
         const serialized = serializeBigInt(data) as T;
