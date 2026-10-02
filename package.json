@@ -2,25 +2,22 @@
   "name": "stayora-monorepo",
   "version": "1.0.0",
   "private": true,
+  "description": "Stayora — Luxury Hotel Reservation & Operations Platform",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm --prefix apps/manager-web run dev",
+    "dev": "npm --prefix apps/admin-web run dev",
+    "dev:admin": "npm --prefix apps/admin-web run dev",
     "dev:manager": "npm --prefix apps/manager-web run dev",
-    "build": "npm --prefix apps/manager-web run build",
-    "preview": "npm --prefix apps/manager-web run preview"
+    "dev:customer": "npm --prefix apps/customer-web run dev",
+    "build": "npm --prefix apps/admin-web run build",
+    "build:admin": "npm --prefix apps/admin-web run build",
+    "build:manager": "npm --prefix apps/manager-web run build",
+    "build:customer": "npm --prefix apps/customer-web run build",
+    "preview": "npm --prefix apps/admin-web run preview"
   },
   "devDependencies": {}
-  "description": "Stayora — Luxury Hotel Reservation & Operations Platform",
-  "workspaces": [
-    "apps/*"
-  ],
-  "scripts": {
-    "dev": "npm --prefix apps/customer-web run dev",
-    "dev:customer": "npm --prefix apps/customer-web run dev",
-    "build": "npm --prefix apps/customer-web run build",
-    "preview": "npm --prefix apps/customer-web run preview"
-  }
 }
+
