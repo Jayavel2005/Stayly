@@ -88,13 +88,8 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   setActiveTab: (activeTab) => set({ activeTab }),
 
   toggleTheme: () => {
-    const nextTheme = get().theme === 'light' ? 'dark' : 'light';
-    if (nextTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    set({ theme: nextTheme });
+    document.documentElement.classList.remove('dark');
+    set({ theme: 'light' });
   },
 
   setQuickSearchOpen: (isQuickSearchOpen) => set({ isQuickSearchOpen }),

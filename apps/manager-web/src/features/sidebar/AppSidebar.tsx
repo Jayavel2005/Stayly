@@ -64,7 +64,7 @@ export const AppSidebar: React.FC = () => {
       id: 'housekeeping',
       label: 'Housekeeping & Turnover',
       icon: Sparkles,
-      badge: kpis.dirtyRoomsCount > 0 ? `${kpis.dirtyRoomsCount} Dirty` : undefined,
+      badge: kpis.dirtyRoomsCount > 0 ? kpis.dirtyRoomsCount : undefined,
       badgeVariant: 'warning',
     },
     {
@@ -82,9 +82,9 @@ export const AppSidebar: React.FC = () => {
   ];
 
   return (
-    <aside className="w-64 border-r border-border bg-card flex flex-col justify-between shrink-0 min-h-[calc(100vh-4rem)] select-none">
+    <aside className="w-64 border-r border-border bg-card flex flex-col shrink-0 h-full select-none">
       {/* Upper Navigation Block */}
-      <div className="p-4 space-y-6">
+      <div className="p-4 space-y-6 flex-1 overflow-y-auto">
         {/* Brand Monogram & Hotel Identity */}
         <div className="flex items-center gap-3 px-2 py-1">
           <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg shadow-subtle tracking-tight font-serif">
@@ -172,7 +172,7 @@ export const AppSidebar: React.FC = () => {
       </div>
 
       {/* Bottom Live Occupancy Widget */}
-      <div className="p-4 border-t border-border">
+      <div className="p-4 border-t border-border shrink-0 bg-card">
         <div className="p-3.5 rounded-xl border border-border bg-gradient-to-br from-brand-50/60 to-background dark:from-brand-950/20 dark:to-card space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
