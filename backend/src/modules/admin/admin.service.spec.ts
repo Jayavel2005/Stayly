@@ -74,6 +74,9 @@ describe('AdminService', () => {
       },
       auditLog: {
         create: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
+        findUnique: jest.fn(),
       },
       $transaction: jest.fn((cb) => cb(prisma)),
     };
@@ -315,4 +318,45 @@ describe('AdminService', () => {
       );
     });
   });
+
+  describe('Audit Logs Ledger', () => {
+    it('should retrieve paginated audit logs', async () => {
+      prisma.auditLog.findMany.mockResolvedValueOnce([
+        {
+          id: 'log-1',
+          action: 'admin.user.status_updated',
+          entityType: 'User',
+          entityId: 'user-1',
+          createdAt: new Date(),
+          actor: { id: 'admin-1', email: 'admin@stayora.com' },
+        },
+      ]);
+      prisma.auditLog.count.mockResolvedValueOnce(1);
+
+      const res = await service.getAuditLogs({ page: 1, limit: 10 });
+      expect(res.items.length).toBe(1);
+      expect(res.meta.total).toBe(1);
+      expect(res.meta.totalPages).toBe(1);
+    });
+
+    it('should retrieve a single audit log by ID', async () => {
+      prisma.auditLog.findUnique.mockResolvedValueOnce({
+        id: 'log-1',
+        action: 'admin.user.status_updated',
+        entityType: 'User',
+      });
+
+      const res = await service.getAuditLogById('log-1');
+      expect(res.id).toBe('log-1');
+    });
+
+    it('should throw DomainException if audit log is not found', async () => {
+      prisma.auditLog.findUnique.mockResolvedValueOnce(null);
+
+      await expect(service.getAuditLogById('unknown-log')).rejects.toThrow(
+        DomainException,
+      );
+    });
+  });
 });
+

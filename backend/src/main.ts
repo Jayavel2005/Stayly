@@ -33,6 +33,9 @@ async function bootstrap(): Promise<void> {
       'Authorization',
       'X-Requested-With',
       'X-Request-ID',
+      'Idempotency-Key',
+      'idempotency-key',
+      'Last-Event-ID',
     ],
   });
 
@@ -59,10 +62,57 @@ async function bootstrap(): Promise<void> {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Stayora API')
     .setDescription(
-      'Stayora Hotel Booking & Reservation Platform — Core REST API Documentation',
+      'Stayora Hotel Booking & Reservation Platform — Core REST API Documentation.\n\n' +
+        'Authoritative backend API serving Customer Web (:3000), Manager Web (:3001), and Admin Dashboard (:3002).\n\n' +
+        'All endpoints adhere to `/api/v1` versioning, standard envelope responses, role-based authorization, and strict schema validation.',
     )
     .setVersion('1.0.0')
     .addTag('Health', 'System health and diagnostic endpoints')
+    .addTag(
+      'Auth',
+      'Public customer registration, role-specific logins, and authentication tokens',
+    )
+    .addTag(
+      'Hotels & Property Management',
+      'Hotel property management, public discovery, and manager assignments',
+    )
+    .addTag(
+      'Room Categories & Types',
+      'Room categories, pricing models, occupancy rules, and amenities',
+    )
+    .addTag(
+      'Room Physical Inventory',
+      'Physical room inventory units and operational readiness',
+    )
+    .addTag(
+      'Hotel Search & Discovery',
+      'Real-time hotel availability search and rate queries',
+    )
+    .addTag(
+      'Date-Range Inventory Availability',
+      'Date-range room category availability queries',
+    )
+    .addTag(
+      'Reservations & Booking Engine',
+      'Reservation lifecycle, holding inventory, and state transitions',
+    )
+    .addTag(
+      'Payments & Payment Attempts',
+      'Idempotent payment processing and payment transaction ledgers',
+    )
+    .addTag(
+      'Reviews & Ratings',
+      'Verified guest reviews, hotel rating statistics, and moderation',
+    )
+    .addTag(
+      'Notifications',
+      'In-app notification delivery, read state tracking, and unread counts',
+    )
+    .addTag('Realtime / SSE', 'Server-Sent Events real-time event stream')
+    .addTag(
+      'Admin Operations & Platform Management',
+      'Platform-wide administrative oversight, metrics, and audit logs',
+    )
     .addBearerAuth(
       {
         type: 'http',
@@ -73,6 +123,17 @@ async function bootstrap(): Promise<void> {
         in: 'header',
       },
       'JWT-auth',
+    )
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'Authorization',
+        description: 'Enter JWT bearer token',
+        in: 'header',
+      },
+      'bearer',
     )
     .build();
 

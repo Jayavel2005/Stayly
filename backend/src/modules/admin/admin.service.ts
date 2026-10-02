@@ -26,6 +26,7 @@ import { AdminQueryPaymentsDto } from './dto/admin-query-payments.dto';
 import { AdminQueryReviewsDto } from './dto/admin-query-reviews.dto';
 import { AdminModerateReviewDto } from './dto/admin-moderate-review.dto';
 import { AdminQueryNotificationsDto } from './dto/admin-query-notifications.dto';
+import { AdminQueryAuditLogsDto } from './dto/admin-query-audit-logs.dto';
 
 import { AdminDashboardResponse } from './types/admin-dashboard.types';
 import { PaginatedResponse } from './types/admin.types';
@@ -1455,4 +1456,93 @@ export class AdminService {
       },
     };
   }
+
+  // ===========================================================================
+  // 9. Platform Audit Trail Ledger
+  // ===========================================================================
+
+  async getAuditLogs(
+    query: AdminQueryAuditLogsDto,
+  ): Promise<PaginatedResponse<any>> {
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const where: any = {
+      ...(query.actorId ? { actorId: query.actorId } : {}),
+      ...(query.entityType ? { entityType: query.entityType } : {}),
+      ...(query.entityId ? { entityId: query.entityId } : {}),
+      ...(query.action ? { action: query.action } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { action: { contains: query.search, mode: 'insensitive' } },
+              { entityType: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const sortBy = query.sortBy || 'createdAt';
+    const sortOrder = query.sortOrder || 'desc';
+
+    const [items, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { [sortBy]: sortOrder },
+        include: {
+          actor: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              role: true,
+            },
+          },
+        },
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return {
+      items,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
+  }
+
+  async getAuditLogById(id: string) {
+    const auditLog = await this.prisma.auditLog.findUnique({
+      where: { id },
+      include: {
+        actor: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    if (!auditLog) {
+      throw new DomainException(
+        'AUDIT_LOG_NOT_FOUND',
+        `Audit log record with ID "${id}" was not found`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    return auditLog;
+  }
 }
+

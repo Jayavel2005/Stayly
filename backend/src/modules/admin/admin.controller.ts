@@ -37,8 +37,10 @@ import { AdminQueryPaymentsDto } from './dto/admin-query-payments.dto';
 import { AdminQueryReviewsDto } from './dto/admin-query-reviews.dto';
 import { AdminModerateReviewDto } from './dto/admin-moderate-review.dto';
 import { AdminQueryNotificationsDto } from './dto/admin-query-notifications.dto';
+import { AdminQueryAuditLogsDto } from './dto/admin-query-audit-logs.dto';
 
 @ApiTags('Admin Operations & Platform Management')
+@ApiBearerAuth('JWT-auth')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
@@ -332,4 +334,36 @@ export class AdminController {
   async getNotifications(@Query() query: AdminQueryNotificationsDto) {
     return this.adminService.getNotifications(query);
   }
+
+  // ===========================================================================
+  // 9. Platform Audit Trail
+  // ===========================================================================
+
+  @Get('audit-logs')
+  @ApiOperation({
+    summary: 'Platform-Wide Audit Trail Inspection',
+    description:
+      'Retrieves append-only, immutable audit trail records with actor, entity, action, and before/after diff details.',
+  })
+  @ApiResponse({ status: 200, description: 'Paginated audit logs retrieved' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated request' })
+  @ApiResponse({ status: 403, description: 'Forbidden - requires ADMIN role' })
+  async getAuditLogs(@Query() query: AdminQueryAuditLogsDto) {
+    return this.adminService.getAuditLogs(query);
+  }
+
+  @Get('audit-logs/:id')
+  @ApiOperation({
+    summary: 'Inspect Single Audit Log Entry',
+    description: 'Retrieves full details of a single immutable audit log record.',
+  })
+  @ApiParam({ name: 'id', description: 'Audit log UUID' })
+  @ApiResponse({ status: 200, description: 'Audit log entry retrieved' })
+  @ApiResponse({ status: 404, description: 'Audit log not found' })
+  async getAuditLogById(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.adminService.getAuditLogById(id);
+  }
 }
+
