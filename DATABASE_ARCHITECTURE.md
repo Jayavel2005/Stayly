@@ -1969,5 +1969,72 @@ The engineering team must verify this checklist before executing the initial Pri
 
 ---
 
-**Architecture Approved By:** Principal Database Architect & System Engineering Team  
-**Next Phase:** Execute initial Prisma migration `001_initial_schema` and build NestJS Data Access Module.
+## 50. Phase 2 Implementation & Verification Sign-Off
+
+Phase 2 (PostgreSQL + Prisma Database Foundation) has been completely implemented, verified, and locked:
+
+* **Migration Applied:** `prisma/migrations/20261001123935_init_domain_schema/migration.sql` (enhanced with `btree_gist`, domain `CHECK` constraints, partial unique indexes, and native GiST exclusion constraints for double-booking prevention).
+* **Deterministic Seed Executed:** `prisma/seed.ts` (idempotent `upsert` seeding Customer, Hotel Manager, Admin, 2 luxury properties, 5 room types, 12 physical rooms, manager assignments, and sample historical booking folios).
+* **Database Tests Passed:** `backend/test/database.e2e-spec.ts` (15/15 unit and integration tests passing, including GiST exclusion overlap rejection, CHECK constraints, and ON DELETE RESTRICT referential protections).
+
+**Architecture Status:** Phase 2 Complete & Verified. Ready for Phase 3 (Authentication & Identity Management).
+**Approved By:** Principal Database Architect & System Engineering Team  
+
+---
+
+## 51. Phase 7 Query Architecture: Availability & Discovery Foundation
+
+### 51.1 Single-Query Relational Availability Pattern
+Rather than loading physical rooms and active bookings into Node.js application memory, availability is evaluated strictly in PostgreSQL using indexed relational joins:
+```sql
+SELECT r.id
+FROM rooms r
+WHERE r.room_type_id = $roomTypeId
+  AND r.deleted_at IS NULL
+  AND r.operational_status = 'AVAILABLE'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM booking_rooms br
+    JOIN bookings b ON b.id = br.booking_id
+    WHERE br.room_id = r.id
+      AND br.status IN ('RESERVED', 'OCCUPIED')
+      AND br.check_in_date < $requestedCheckOut
+      AND br.check_out_date > $requestedCheckIn
+      AND b.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
+      AND (b.hold_expires_at IS NULL OR b.hold_expires_at > NOW())
+  );
+```
+
+### 51.2 Index Utilization & Query Plan
+- **Primary Overlap Lookup:** `@@index([roomId, checkInDate, checkOutDate])` on `booking_rooms` allows index-only or index-range scans to filter overlapping date intervals.
+- **Physical Room Filter:** `@@index([roomTypeId, operationalStatus])` on `rooms` avoids table scans when filtering operationally `AVAILABLE` inventory units.
+- **Hotel Discovery Filters:** B-Tree indexes on `hotels(city)`, `hotels(starRating)`, and `hotels(isActive)` support fast pagination and multi-attribute customer queries.
+
+### 51.3 Transactional Isolation Notice for Future Phase 8
+Phase 7 queries operate under standard `READ COMMITTED` isolation for search performance. In Phase 8, the Booking Engine must promote to `REPEATABLE READ` or utilize `SELECT ... FOR UPDATE` on the `rooms` table to prevent race conditions during concurrent reservations.
+
+---
+
+## 52. Phase 8 Implementation & Concurrency Architecture Sign-Off
+
+### 52.1 Authoritative Booking Transaction Isolation
+The Booking Engine establishes authoritative PostgreSQL transactions via `prisma.$transaction`:
+1. **Pessimistic Row-Level Locking:**
+   ```sql
+   SELECT id, room_number
+   FROM rooms
+   WHERE room_type_id = $roomTypeId
+     AND deleted_at IS NULL
+     AND operational_status = 'AVAILABLE'
+   ORDER BY room_number ASC
+   FOR UPDATE;
+   ```
+   Deterministic ordering prevents deadlock and forces concurrent booking transactions competing for the same category to serialize.
+2. **Dual-Layer Overlap Prevention:**
+   - **Layer 1 (Application Transaction):** Reads newly committed active allocations under the locked rows and verifies that available inventory satisfies `requestedRooms`. Throws `409 ROOM_NOT_AVAILABLE` cleanly if exhausted.
+   - **Layer 2 (PostgreSQL Storage Engine):** The native GiST exclusion constraint (`exclude_overlapping_room_allocations`) on `booking_rooms` guarantees at the storage engine level that two overlapping active intervals (`RESERVED`, `OCCUPIED`) for the same physical room can never coexist.
+3. **Historical Price Freezing:**
+   Persists `booking_price_snapshots` with exact integer cents (`BigInt`), isolating historical revenue records from subsequent RoomType pricing changes.
+
+
+

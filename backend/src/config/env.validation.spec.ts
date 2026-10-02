@@ -49,4 +49,15 @@ describe('Environment Validation', () => {
       /NODE_ENV must be either development, production, or test/,
     );
   });
+
+  it('should fail when REDIS_PORT is outside valid range', () => {
+    const invalidConfig = {
+      ...validConfig,
+      REDIS_PORT: 99999,
+    };
+
+    expect(() => validateEnvironment(invalidConfig)).toThrow(
+      /REDIS_PORT must not be greater than 65535/,
+    );
+  });
 });

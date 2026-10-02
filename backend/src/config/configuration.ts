@@ -11,6 +11,9 @@ export interface AppConfig {
   redis: {
     host: string;
     port: number;
+    password?: string;
+    db?: number;
+    url?: string;
   };
   cors: {
     origins: string[];
@@ -40,6 +43,9 @@ export default (): AppConfig => {
     redis: {
       host: process.env.REDIS_HOST || 'localhost',
       port: parseInt(process.env.REDIS_PORT || '6379', 10),
+      password: process.env.REDIS_PASSWORD || undefined,
+      db: process.env.REDIS_DB ? parseInt(process.env.REDIS_DB, 10) : 0,
+      url: process.env.REDIS_URL || undefined,
     },
     cors: {
       origins,

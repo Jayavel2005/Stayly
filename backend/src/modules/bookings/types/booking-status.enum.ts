@@ -1,0 +1,16 @@
+export enum BookingStatus {
+  PENDING = 'PENDING',
+  CONFIRMED = 'CONFIRMED',
+  CHECKED_IN = 'CHECKED_IN',
+  CHECKED_OUT = 'CHECKED_OUT',
+  CANCELLED = 'CANCELLED',
+  EXPIRED = 'EXPIRED',
+  NO_SHOW = 'NO_SHOW',
+}
+
+export enum BookingRoomStatus {
+  RESERVED = 'RESERVED',
+  OCCUPIED = 'OCCUPIED',
+  RELEASED = 'RELEASED',
+  CANCELLED = 'CANCELLED',
+}

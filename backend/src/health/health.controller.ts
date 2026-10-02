@@ -21,11 +21,15 @@ export class HealthController {
           service: 'stayora-api',
           environment: 'development',
           timestamp: '2026-10-01T10:00:00.000Z',
+          services: {
+            database: 'up',
+            redis: 'up',
+          },
         },
       },
     },
   })
-  check(): HealthData {
+  async check(): Promise<HealthData> {
     return this.healthService.getHealth();
   }
 }
