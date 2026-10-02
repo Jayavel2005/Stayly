@@ -23,6 +23,12 @@ async function bootstrap(): Promise<void> {
   // Graceful shutdown hooks for Prisma and HTTP server
   app.enableShutdownHooks();
 
+  // Security hardening: Disable X-Powered-By header
+  const httpAdapter = app.getHttpAdapter().getInstance();
+  if (httpAdapter && typeof httpAdapter.disable === 'function') {
+    httpAdapter.disable('x-powered-by');
+  }
+
   // Configure CORS
   app.enableCors({
     origin: allowedOrigins,

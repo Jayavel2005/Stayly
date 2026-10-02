@@ -112,5 +112,15 @@ export function validateEnvironment(
     );
   }
 
+  // Production security invariant: JWT_SECRET must be explicitly provided and high-entropy
+  if (validatedConfig.NODE_ENV === Environment.Production) {
+    const secret = validatedConfig.JWT_SECRET;
+    if (!secret || secret.length < 32 || secret.toLowerCase().includes('development') || secret.toLowerCase().includes('secret')) {
+      throw new Error(
+        `\n❌ Critical Environment Configuration Error:\n  - JWT_SECRET: In production, JWT_SECRET is required and must be a secure key with at least 32 characters.\n`,
+      );
+    }
+  }
+
   return validatedConfig;
 }
