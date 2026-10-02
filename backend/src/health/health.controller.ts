@@ -24,6 +24,7 @@ export class HealthController {
           services: {
             database: 'up',
             redis: 'up',
+            queues: 'up',
           },
         },
       },

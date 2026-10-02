@@ -39,6 +39,7 @@ describe('HealthController', () => {
     expect(result.services).toEqual({
       database: 'up',
       redis: 'up',
+      queues: 'up',
     });
   });
 
@@ -61,6 +62,34 @@ describe('HealthController', () => {
     expect(result.services).toEqual({
       database: 'up',
       redis: 'down',
+      queues: 'up',
+    });
+  });
+
+  it('should report degraded status when BullMQ queues are down', async () => {
+    const mockPrisma = {
+      $queryRaw: jest.fn().mockResolvedValue([{ 1: 1 }]),
+    };
+    const mockRedis = {
+      isHealthy: jest.fn().mockResolvedValue(true),
+    };
+    const mockQueues = {
+      isHealthy: jest.fn().mockResolvedValue(false),
+    };
+
+    const degradedService = new HealthService(
+      { get: jest.fn().mockReturnValue('test') } as any,
+      mockPrisma as any,
+      mockRedis as any,
+      mockQueues as any,
+    );
+
+    const result = await degradedService.getHealth();
+    expect(result.status).toBe('degraded');
+    expect(result.services).toEqual({
+      database: 'up',
+      redis: 'up',
+      queues: 'down',
     });
   });
 
@@ -83,6 +112,7 @@ describe('HealthController', () => {
     expect(result.services).toEqual({
       database: 'down',
       redis: 'up',
+      queues: 'up',
     });
   });
 });

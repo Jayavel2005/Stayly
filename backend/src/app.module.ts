@@ -4,6 +4,7 @@ import configuration from './config/configuration';
 import { validateEnvironment } from './config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
+import { QueuesModule } from './infrastructure/queues/queues.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HotelsModule } from './modules/hotels/hotels.module';
@@ -25,6 +26,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     }),
     PrismaModule,
     RedisModule,
+    QueuesModule,
     HealthModule,
     AuthModule,
     HotelsModule,

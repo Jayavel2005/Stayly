@@ -1,4 +1,4 @@
-import { Injectable, HttpStatus, Logger } from '@nestjs/common';
+import { Injectable, HttpStatus, Logger, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DomainException } from '../../common/exceptions/domain.exception';
@@ -9,18 +9,71 @@ import {
   PaginatedNotificationsResponse,
   UnreadCountResponse,
 } from './types/notification-response.type';
+import { QueueService } from '../../infrastructure/queues/queue.service';
+import { NotificationJobName } from '../../infrastructure/queues/queue.types';
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly queueService?: QueueService,
+  ) {}
 
   /**
    * Internal Backend Notification Dispatcher.
-   * Persists a notification to PostgreSQL.
+   * Dispatches asynchronously via BullMQ when available, or executes direct DB creation on fallback.
    */
   async create(payload: CreateNotificationPayload): Promise<NotificationResponse> {
+    if (this.queueService) {
+      try {
+        const idempotencyKey =
+          (payload.data as any)?.idempotencyKey || (payload.data as any)?.eventId;
+        const deterministicJobId = idempotencyKey
+          ? `notif-${payload.userId}-${payload.type}-${idempotencyKey}`.replace(/[:]/g, '-')
+          : undefined;
+
+        const enqueued = await this.queueService.enqueueNotification(
+          NotificationJobName.SEND_NOTIFICATION,
+          {
+            userId: payload.userId,
+            type: payload.type,
+            title: payload.title,
+            message: payload.message,
+            data: payload.data,
+            idempotencyKey,
+          },
+          deterministicJobId ? { jobId: deterministicJobId } : undefined,
+        );
+
+        if (enqueued) {
+          return {
+            id: enqueued.id ? String(enqueued.id) : 'queued',
+            userId: payload.userId,
+            title: payload.title,
+            message: payload.message,
+            type: payload.type,
+            data: payload.data || null,
+            isRead: false,
+            readAt: null,
+            createdAt: new Date().toISOString(),
+          };
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `[NotificationsService] Queue dispatch failed for user ${payload.userId}. Falling back to direct database insertion: ${err.message}`,
+        );
+      }
+    }
+
+    return this.createDirect(payload);
+  }
+
+  /**
+   * Directly creates and persists a notification record in PostgreSQL.
+   */
+  async createDirect(payload: CreateNotificationPayload): Promise<NotificationResponse> {
     try {
       const notification = await this.prisma.notification.create({
         data: {
@@ -49,12 +102,43 @@ export class NotificationsService {
 
   /**
    * Internal Helper: Dispatches a notification to all managers assigned to a specific hotel property.
-   * Guarantees manager tenant isolation by querying the hotel_managers join table.
+   * Routes through BullMQ fan-out job when available.
    */
   async createForManagersOfHotel(
     hotelId: string,
     payload: Omit<CreateNotificationPayload, 'userId'>,
   ): Promise<number> {
+    if (this.queueService) {
+      try {
+        const idempotencyKey =
+          (payload.data as any)?.idempotencyKey || (payload.data as any)?.eventId;
+        const deterministicJobId = idempotencyKey
+          ? `fanout-${hotelId}-${payload.type}-${idempotencyKey}`.replace(/[:]/g, '-')
+          : undefined;
+
+        const enqueued = await this.queueService.enqueueNotification(
+          NotificationJobName.FANOUT_HOTEL_MANAGERS,
+          {
+            hotelId,
+            type: payload.type,
+            title: payload.title,
+            message: payload.message,
+            data: payload.data,
+            idempotencyKey,
+          },
+          deterministicJobId ? { jobId: deterministicJobId } : undefined,
+        );
+
+        if (enqueued) {
+          return 1;
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `[NotificationsService] Queue fan-out failed for hotel ${hotelId}. Falling back to direct database loop: ${err.message}`,
+        );
+      }
+    }
+
     try {
       const assignments = await this.prisma.hotelManager.findMany({
         where: { hotelId },
@@ -67,7 +151,7 @@ export class NotificationsService {
 
       await Promise.all(
         assignments.map((assignment) =>
-          this.create({
+          this.createDirect({
             ...payload,
             userId: assignment.userId,
           }).catch((err) => {
