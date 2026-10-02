@@ -1002,6 +1002,94 @@ All notification endpoints require authentication with `Authorization: Bearer <J
 * **Client Recovery Contract:**
   - SSE is purely a notification mechanism. On reconnect or missed events, clients must query authoritative REST endpoints (`GET /api/v1/bookings/:id`, `GET /api/v1/notifications`, etc.) to reconcile current state.
 
+---
+
+## 14. Admin Operations & Platform Management API Specification (Phase 16)
+
+All endpoints under `/api/v1/admin/*` strictly require `ADMIN` authorization (`@UseGuards(JwtAuthGuard, RolesGuard)` and `@Roles(UserRole.ADMIN)`). Unauthenticated requests return `401 Unauthorized`; `CUSTOMER` or `HOTEL_MANAGER` requests return `403 Forbidden`.
+
+### 14.1 Platform Operational Dashboard
+* **Endpoint:** `GET /api/v1/admin/dashboard`
+* **Access:** `ADMIN`
+* **Query Parameters:**
+  - `from?: string` (ISO 8601 date, optional)
+  - `to?: string` (ISO 8601 date, optional)
+* **Behavior:**
+  - Returns database-side computed aggregations across `users`, `hotels`, `inventory`, `bookings`, `payments`, `reviews`, and `notifications`.
+  - Date filtering applies to temporal metrics (`from <= to` enforced, returning `400` if invalid).
+  - Financial totals calculate completed revenue with strict integer/decimal precision (`totalRevenueCents`).
+* **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "dateRange": { "from": null, "to": null },
+      "users": { "totalUsers": 120, "activeUsers": 110, "totalCustomers": 95, "totalManagers": 20, "suspendedUsers": 5 },
+      "hotels": { "totalHotels": 12, "activeHotels": 10, "inactiveHotels": 2 },
+      "inventory": { "totalRoomTypes": 36, "totalRooms": 144 },
+      "bookings": { "totalBookings": 320, "pending": 15, "confirmed": 180, "checkedIn": 25, "checkedOut": 80, "cancelled": 20, "noShow": 0 },
+      "payments": { "totalPayments": 260, "completed": 210, "failed": 35, "pending": 15, "totalRevenueCents": 63000000 },
+      "reviews": { "totalReviews": 95, "publishedReviews": 90, "averageRating": 4.65 },
+      "notifications": { "totalNotifications": 850, "unreadNotifications": 42 }
+    }
+  }
+  ```
+
+### 14.2 User Management
+* **List Users:** `GET /api/v1/admin/users?page=1&limit=20&role=CUSTOMER&status=ACTIVE&search=john`
+  - Paginated list with sorting allowlist (`createdAt`, `email`, `firstName`, `lastName`, `role`, `status`).
+  - Sensitive `passwordHash` is excluded from all responses.
+* **Inspect User Detail:** `GET /api/v1/admin/users/:id`
+  - Returns user profile, bookings count, reviews count, and manager property assignments.
+* **Update User Status:** `PATCH /api/v1/admin/users/:id/status`
+  - Body: `{ "status": "SUSPENDED", "reason": "Chargeback dispute" }`
+  - **Admin Self-Protection:** If an admin attempts to modify their own account status, the request is rejected with `403 Forbidden` (`ADMIN_SELF_PROTECTION`).
+  - Transitioning to `SUSPENDED` or `DISABLED` automatically invalidates active refresh tokens.
+  - Emits `USER_STATUS_CHANGED` real-time SSE event and records audit log.
+
+### 14.3 Manager Management & Property Assignments
+* **List Managers:** `GET /api/v1/admin/managers?page=1&limit=20&search=rao`
+  - Lists users with role `HOTEL_MANAGER` and their assigned properties.
+* **Assign Manager to Hotel:** `POST /api/v1/admin/hotels/:hotelId/managers/:managerId`
+  - Body: `{ "isPrimary": true }`
+  - Verifies hotel exists, manager exists, manager has `HOTEL_MANAGER` role, and account is `ACTIVE`.
+  - Idempotent upsert: handles concurrent assignment requests safely.
+  - Emits `MANAGER_ASSIGNMENT_CHANGED` real-time SSE event and records audit log.
+* **Unassign Manager from Hotel:** `DELETE /api/v1/admin/hotels/:hotelId/managers/:managerId`
+  - Removes assignment record without deleting manager user account or hotel property.
+  - Emits `MANAGER_ASSIGNMENT_CHANGED` real-time SSE event and records audit log.
+
+### 14.4 Hotel Administration & Safe Deactivation
+* **List All Hotels:** `GET /api/v1/admin/hotels?page=1&limit=20&isActive=true&city=Mumbai`
+  - Platform-wide catalog with aggregate counts (`_count: { rooms, roomTypes, bookings, managers }`).
+* **Inspect Hotel:** `GET /api/v1/admin/hotels/:id`
+  - Returns hotel details with full room catalog, room types, and assigned staff.
+* **Activate / Deactivate Hotel:** `PATCH /api/v1/admin/hotels/:id/status`
+  - Body: `{ "isActive": false, "reason": "Renovation" }`
+  - **Safe Deactivation Invariant:** Deactivating a hotel hides it from public discovery, but **preserves all existing confirmed reservations** without cancellation or corruption.
+  - Evicts Redis cache for `hotel(id)` and emits `HOTEL_STATUS_CHANGED` SSE event.
+
+### 14.5 Booking & Payment Inspection
+* **List Bookings:** `GET /api/v1/admin/bookings?status=CONFIRMED&checkInFrom=...`
+  - Platform-wide read-only booking ledger with customer and payment references.
+* **Inspect Booking:** `GET /api/v1/admin/bookings/:id`
+  - Returns complete reservation details, allocated rooms, guests, price snapshot, and payment attempts.
+* **List Payments:** `GET /api/v1/admin/payments?status=SUCCEEDED`
+  - Sanitized payment list. Card secrets, CVVs, and provider credentials are never returned.
+* **Inspect Payment:** `GET /api/v1/admin/payments/:id`
+  - Returns transaction details, gateway attempts, and refund history.
+
+### 14.6 Review Moderation
+* **List Reviews:** `GET /api/v1/admin/reviews?isPublished=false`
+* **Moderate Review:** `PATCH /api/v1/admin/reviews/:id/moderation`
+  - Body: `{ "isPublished": false, "moderationReason": "Violation of community guidelines" }`
+  - Updates visibility and records audit log entry (`admin.review.moderated`).
+
+### 14.7 Notification Inspection
+* **List Notifications:** `GET /api/v1/admin/notifications?userId=...&isRead=false`
+  - Read-only administrative audit of dispatched notifications across all accounts.
+
+
 
 
 

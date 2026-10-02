@@ -1,12 +1,8 @@
 import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export class ModerateReviewDto {
-  @ApiProperty({
-    description:
-      'Whether the review is publicly visible or concealed by administrative moderation.',
-    example: false,
-  })
+export class AdminModerateReviewDto {
+  @ApiProperty({ description: 'Whether the review is visible/published' })
   @IsBoolean()
   isPublished: boolean;
 

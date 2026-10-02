@@ -189,9 +189,41 @@ this.resourceOwnershipService.assertOwnerOrAdmin(
 
 ---
 
-## 9. Future Authorization Roadmap (Phases 7 – 10)
+## 9. Historical Authorization Roadmap (Phases 7 – 10)
 
-The following resource-level authorization services will be implemented alongside their respective business domains:
-* **Phase 6 (Room Inventory):** *Implemented & Verified.* Room and RoomType modifications are verified against manager assignments in `hotel_managers`.
+The following resource-level authorization services were implemented alongside their respective business domains:
+* **Phase 6 (Room Inventory):** Room and RoomType modifications are verified against manager assignments in `hotel_managers`.
 * **Phase 8 (Bookings):** Customer booking ownership assertions (`assertBookingOwner`) and manager property booking checks (`assertBookingBelongsToManagerHotel`).
 * **Phase 9 (Payments & Refunds):** Restricting refund issuance to authorized property managers or platform admins.
+* **Phase 11 (Reviews):** Verification that review author matches booking customer and stay is completed.
+
+---
+
+## 10. Admin Platform Authorization Matrix (Phase 16)
+
+Admin is an authoritative, explicit operational role with platform-wide visibility and administrative authority. It does **not** inherit arbitrary customer or manager actions.
+
+### 10.1 Platform Authorization Matrix
+
+| Operation | Customer | Manager | Admin | Notes |
+| :--- | :---: | :---: | :---: | :--- |
+| **View own profile** | ✅ | ✅ | ✅ | Standard authenticated user self-access |
+| **View own bookings** | ✅ | ❌ | ❌ | Scoped strictly to booking `customerId` |
+| **View assigned hotel bookings** | ❌ | ✅ | ❌ | Scoped to properties assigned via `hotel_managers` |
+| **Platform-wide booking inspection** | ❌ | ❌ | ✅ | Read-only ledger inspection across all properties |
+| **Manage hotel staff / inventory** | ❌ | ✅ | ❌ | Operational inventory managed by assigned managers |
+| **Platform-wide hotel listing** | ❌ | Limited | ✅ | Admin views active and inactive properties |
+| **Hotel activation / deactivation** | ❌ | Limited | ✅ | Safe deactivation preserving confirmed reservations |
+| **View platform users & managers** | ❌ | ❌ | ✅ | Paginated, excludes password hashes and secrets |
+| **Manage user/manager status** | ❌ | ❌ | ✅ | Self-protection prevents self-modification |
+| **Assign / unassign hotel managers** | ❌ | ❌ | ✅ | Idempotent assignment with role verification |
+| **Platform-wide payment ledger** | ❌ | ❌ | ✅ | Read-only sanitized payments and attempts |
+| **Moderate reviews** | ❌ | ❌ | ✅ | Publish / unpublish content moderation with audit |
+| **Platform dashboard analytics** | ❌ | ❌ | ✅ | Authoritative database-side aggregations |
+
+### 10.2 Admin Self-Protection Invariant
+An administrator cannot modify or suspend their own account status (`ADMIN_SELF_PROTECTION` $\rightarrow$ `403 Forbidden`). This prevents accidental lockout of operational administrators.
+
+### 10.3 Hotel Deactivation Invariant
+Deactivating a hotel (`isActive = false`) removes it from public discovery and availability search, but **never cancels or corrupts existing confirmed customer reservations**.
+

@@ -8,5 +8,6 @@ export enum UserRole {
 export enum UserStatus {
   ACTIVE = 'ACTIVE',
   SUSPENDED = 'SUSPENDED',
+  DISABLED = 'DISABLED',
   PENDING_VERIFICATION = 'PENDING_VERIFICATION',
 }

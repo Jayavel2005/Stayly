@@ -31,4 +31,7 @@ export const ADMIN_ALLOWED_EVENT_TYPES: ReadonlySet<RealtimeEventType> = new Set
   RealtimeEventType.CHECKED_IN,
   RealtimeEventType.CHECKED_OUT,
   RealtimeEventType.NOTIFICATION_CREATED,
+  RealtimeEventType.HOTEL_STATUS_CHANGED,
+  RealtimeEventType.USER_STATUS_CHANGED,
+  RealtimeEventType.MANAGER_ASSIGNMENT_CHANGED,
 ]);
